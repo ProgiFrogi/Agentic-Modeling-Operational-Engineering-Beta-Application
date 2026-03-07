@@ -631,7 +631,6 @@ class VectorStore:
 
         # Create or get collections
         self.chunks_collection = self._get_or_create_collection("kaggle_chunks")
-        self.sources_collection = self._get_or_create_collection("kaggle_sources")
 
     def _get_or_create_collection(self, name: str):
         """Get existing collection or create new one"""
@@ -682,33 +681,6 @@ class VectorStore:
             documents=[text_to_embed[:1000]],  # Store preview
             metadatas=[metadata],
             ids=[chunk.id]
-        )
-
-    def add_source(self, source: KaggleSource):
-        """Add source metadata to vector store"""
-        metadata = {
-            "source_id": source.id,
-            "title": str(source.title)[:100],
-            "url": str(source.url)[:200],
-            "content_type": source.content_type.value,
-            "author": str(source.author)[:50],
-            "date": source.date,
-            "chunk_count": len(source.chunks),
-        }
-
-        # Add additional metadata
-        for k, v in source.metadata.items():
-            if v is not None:
-                if isinstance(v, (str, int, float, bool)):
-                    metadata[k] = v
-                else:
-                    metadata[k] = str(v)[:100]
-
-        self.sources_collection.add(
-            embeddings=[self.embedding_model.encode(source.title).tolist()],
-            documents=[source.title],
-            metadatas=[metadata],
-            ids=[source.id]
         )
 
     def search_chunks(self, query: str, content_type: Optional[ContentType] = None,
@@ -771,28 +743,6 @@ class VectorStore:
                     break
 
         return formatted_results
-
-    def get_chunk_by_id(self, chunk_id: str) -> Optional[Dict]:
-        """Retrieve a specific chunk by ID"""
-        results = self.chunks_collection.get(ids=[chunk_id])
-        if results and results['metadatas']:
-            return results['metadatas'][0]
-        return None
-
-    def get_source_chunks(self, source_id: str) -> List[Dict]:
-        """Get all chunks for a source"""
-        results = self.chunks_collection.get(
-            where={"source_id": source_id}
-        )
-
-        chunks = []
-        if results and results['metadatas']:
-            for metadata in results['metadatas']:
-                chunks.append(metadata)
-
-        # Sort by position
-        chunks.sort(key=lambda x: int(x.get('position', 0)))
-        return chunks
 
 
 class KaggleRAGPipeline:
@@ -926,9 +876,6 @@ class KaggleRAGPipeline:
             self.vector_store.add_chunk(chunk)
             source.chunks.append(chunk.id)
 
-        # Add source metadata
-        self.vector_store.add_source(source)
-
         print(f"Processed notebook '{source.title}' into {len(chunks)} chunks")
         return source
 
@@ -1011,9 +958,6 @@ class KaggleRAGPipeline:
         for chunk in chunks:
             self.vector_store.add_chunk(chunk)
             source.chunks.append(chunk.id)
-
-        # Add source metadata
-        self.vector_store.add_source(source)
 
         print(f"Processed discussion '{source.title}' into {len(chunks)} chunks")
         return source
