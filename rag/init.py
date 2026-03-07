@@ -10,10 +10,10 @@ import uuid
 
 import requests
 from enum import Enum
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
-import pandas as pd
+# import pandas as pd  # unused
 import numpy as np
 from tqdm import tqdm
 
@@ -26,6 +26,13 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 
+# Kaggle helpers
+from tools.kaggle_utils import (
+    search_competitions,
+    search_kernels,
+    download_kernel_notebook,
+)
+
 # For text processing
 import re
 from langchain_text_splitters import (
@@ -34,7 +41,7 @@ from langchain_text_splitters import (
     MarkdownTextSplitter,
     TokenTextSplitter
 )
-from langchain_text_splitters.base import Document
+# from langchain_text_splitters.base import Document  # unused
 
 
 class ContentType(Enum):
@@ -185,13 +192,6 @@ class KaggleExtractor:
             'date': datetime.now().isoformat()
         }
 
-    def _fetch_notebook_from_kaggle(self, notebook_path: str) -> Dict[str, Any]:
-        """Fetch notebook from Kaggle using API"""
-        # Implementation for Kaggle API
-        print(f"Fetching notebook {notebook_path} from Kaggle...")
-        # This would use the Kaggle API
-        return {}
-
     def extract_discussion(self, discussion_url: str) -> Dict[str, Any]:
         """Extract content from a Kaggle discussion"""
         # Mock implementation - in production, use Kaggle API or scraping
@@ -237,7 +237,7 @@ class KaggleExtractor:
 
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
-    def code_to_description(self, code: str) -> str:
+    def analyze_code(self, code: str) -> Dict:
         """Analyze code and return description and metadata"""
         analysis = {
             'description': '',
@@ -258,8 +258,8 @@ class CodeAnalyzer:
 
         except SyntaxError:
             analysis['description'] = "Code snippet (syntax could not be parsed)"
-        except:
-            analysis['description'] = f"Code snippet"
+        except Exception:
+            analysis['description'] = "Code snippet"
 
         return analysis
 
@@ -379,6 +379,9 @@ class LangChainChunker:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
         )
+        
+        # Backward compatibility for older Python versions without ast.unparse
+        self._has_unparse = hasattr(ast, 'unparse')
 
     def chunk_code_cell(self, code: str, cell_index: int) -> List[Dict]:
         """
@@ -403,7 +406,7 @@ class LangChainChunker:
                         node_code = '\n'.join(lines[start_line - 1:end_line])
                     else:
                         # Approximate if end_line not available
-                        node_code = ast.unparse(node)
+                        node_code = ast.get_source_segment(code, node) if hasattr(ast, 'get_source_segment') else (ast.unparse(node) if self._has_unparse else '\n'.join(lines[start_line - 1: start_line]))
 
                     functions_and_classes.append({
                         'type': 'function' if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else 'class',
@@ -768,7 +771,7 @@ class KaggleRAGPipeline:
             id=source_id,
             title=notebook_data.get('title', 'Untitled'),
             url=f"https://kaggle.com/{notebook_source}" if source_type == 'kaggle' else '',
-            content_type=ContentType.NOTEBOOK,
+            content_type=ContentType.CODE,
             author=notebook_data.get('author', 'unknown'),
             date=notebook_data.get('date', datetime.now().isoformat()),
             metadata={
@@ -808,7 +811,7 @@ class KaggleRAGPipeline:
                         source_title=source.title,
                         source_url=source.url,
                         chunk_type=ChunkType.MARKDOWN_CELL,
-                        content_type=ContentType.NOTEBOOK,
+                        content_type=ContentType.CODE,
                         text=chunk_data['text'],
                         tags=tags,
                         metadata={
@@ -878,6 +881,41 @@ class KaggleRAGPipeline:
 
         print(f"Processed notebook '{source.title}' into {len(chunks)} chunks")
         return source
+
+    def build_index_from_kaggle(self, query: Optional[str] = None, n_competitions: int = 3,
+                                notebooks_per_comp: int = 5, discussions_per_comp: int = 5,
+                                download_dir: str = "./kaggle_notebooks") -> List[KaggleSource]:
+        """
+        Use Kaggle search utilities to collect competitions, then fetch notebooks and discussions
+        and process them into the vector store.
+        """
+
+        sources: List[KaggleSource] = []
+
+        comps = search_competitions(query=query, max_results=n_competitions)
+        if not comps:
+            print("No competitions found for given query.")
+            return sources
+
+        for comp in comps:
+            comp_ref = comp.get('ref')
+            comp_title = comp.get('title')
+            print(f"Processing competition: {comp_title} ({comp_ref})")
+
+            # Notebooks for this competition
+            kernels = search_kernels(competition=comp_ref, max_results=notebooks_per_comp)
+            for k in kernels:
+                ref = k.get('ref')
+                nb_path = download_kernel_notebook(ref, path=download_dir)
+                if not nb_path:
+                    continue
+                try:
+                    src = self.process_notebook(nb_path, source_type='local')
+                    sources.append(src)
+                except Exception as e:
+                    print(f"Error processing notebook {ref}: {e}")
+
+        return sources
 
     def process_discussion(self, discussion_url: str) -> KaggleSource:
         """
@@ -1029,37 +1067,20 @@ def main():
     # Initialize pipeline
     pipeline = KaggleRAGPipeline()
 
-    # Example 1: Process a local notebook
-    print("Processing local notebook...")
-    notebook_content = pipeline.process_notebook(
-        "sample_notebook.ipynb",
-        source_type='local'
-    )
-    print(f"Processed notebook: {notebook_content.title}")
-    print(f"Tags: {notebook_content.tags}")
-    print(f"Code description: {notebook_content.code_description[:200]}...")
+    # Example 4: Build index from Kaggle search (requires Kaggle API auth)
+    try:
+        print("\nBuilding index from Kaggle search...")
+        kaggle_sources = pipeline.build_index_from_kaggle(
+            query="tabular",
+            n_competitions=1,
+            notebooks_per_comp=1,
+            discussions_per_comp=1,
+        )
+        print(f"Indexed {len(kaggle_sources)} Kaggle-derived sources")
+    except Exception as e:
+        print(f"Skipping Kaggle search demo: {e}")
 
-    # Example 2: Process a discussion (simulated)
-    print("\nProcessing discussion...")
-    discussion_content = pipeline.process_discussion(
-        "https://kaggle.com/discussion/12345"
-    )
-    print(f"Processed discussion: {discussion_content.title}")
-    print(f"Tags: {discussion_content.tags}")
-
-    # Example 3: Batch process multiple sources
-    sources = [
-        {'type': 'notebook', 'source': 'user1/notebook1.ipynb', 'source_type': 'local'},
-        {'type': 'notebook', 'source': 'user2/notebook2.ipynb', 'source_type': 'local'},
-        {'type': 'discussion', 'source': 'https://kaggle.com/discussion/12346'},
-        {'type': 'discussion', 'source': 'https://kaggle.com/discussion/12347'},
-    ]
-
-    print("\nBatch processing...")
-    processed = pipeline.batch_process(sources)
-    print(f"Processed {len(processed)} items")
-
-    # Example 4: Search
+    # Example 5: Search
     print("\nSearching for content...")
     results = pipeline.search(
         query="How to do feature engineering for tabular data?",
@@ -1070,12 +1091,12 @@ def main():
 
     print(f"Found {len(results)} results:")
     for i, result in enumerate(results):
-        print(f"\n{i + 1}. Type: {result['type']}")
-        print(f"   Title: {result['metadata'].get('title', 'Unknown')}")
+        print(f"\n{i + 1}. Type: {result['chunk_type']}")
+        print(f"   Title: {result['source_title']}")
         print(f"   Similarity: {result['similarity_score']:.3f}")
-        print(f"   Tags: {result['metadata'].get('tags', '[]')[:100]}...")
+        print(f"   Tags: {', '.join(result['tags'])[:100]}...")
 
-    # Example 5: Agent-based querying with specific requirements
+    # Example 6: Agent-based querying with specific requirements
     print("\n=== Agent Query Examples ===")
 
     # Agent 1: Looking for PyTorch code solutions
@@ -1088,7 +1109,7 @@ def main():
 
     print("\nAgent 1 (Code Specialist) Results:")
     for r in code_results:
-        print(f"- {r['metadata']['title']} (Score: {r['similarity_score']:.2f})")
+        print(f"- {r['source_title']} (Score: {r['similarity_score']:.2f})")
 
     # Agent 2: Looking for discussion insights
     discussion_results = pipeline.search(
@@ -1100,44 +1121,8 @@ def main():
 
     print("\nAgent 2 (Discussion Analyst) Results:")
     for r in discussion_results:
-        print(f"- {r['metadata']['title']} (Score: {r['similarity_score']:.2f})")
+        print(f"- {r['source_title']} (Score: {r['similarity_score']:.2f})")
 
-
-# Utility functions for production use
-def create_kaggle_content_index(
-        notebook_dirs: List[str],
-        discussion_urls: List[str],
-        output_dir: str = "./kaggle_index"
-) -> KaggleRAGPipeline:
-    """
-    Create a complete index from multiple Kaggle sources
-    """
-    pipeline = KaggleRAGPipeline()
-
-    # Process notebooks from directories
-    sources = []
-
-    for notebook_dir in notebook_dirs:
-        for root, dirs, files in os.walk(notebook_dir):
-            for file in files:
-                if file.endswith('.ipynb'):
-                    sources.append({
-                        'type': 'notebook',
-                        'source': os.path.join(root, file),
-                        'source_type': 'local'
-                    })
-
-    for url in discussion_urls:
-        sources.append({
-            'type': 'discussion',
-            'source': url,
-            'source_type': 'kaggle'
-        })
-
-    # Batch process all sources
-    pipeline.batch_process(sources)
-
-    return pipeline
 
 if __name__ == "__main__":
     main()
