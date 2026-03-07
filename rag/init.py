@@ -118,7 +118,7 @@ class ContentChunk:
     text: str
     code: Optional[str] = None
     code_description: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
+    tags: List[ChunkTags] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     chunk_size: int = 0
 
@@ -322,66 +322,76 @@ class TagGenerator:
 
     def __init__(self):
         self.tag_keywords = {
+            # Domains
             ChunkTags.COMPUTER_VISION: ['cv2', 'opencv', 'image', 'cnn', 'conv', 'resnet', 'vgg', 'yolo'],
             ChunkTags.NLP: ['nlp', 'text', 'bert', 'transformer', 'token', 'sentence', 'word2vec', 'glove'],
             ChunkTags.TABULAR: ['pandas', 'dataframe', 'tabular', 'csv', 'excel', 'table'],
-            ChunkTags.TIME_SERIES: ['time', 'series', 'date', 'temporal', 'seasonal', 'forecast'],
+            ChunkTags.TIME_SERIES: ['time series', 'timestamp', 'datetime', 'seasonal', 'forecast', 'arima', 'prophet'],
 
-            ChunkTags.DEEP_LEARNING: ['neural', 'deep', 'layer', 'activation', 'backprop'],
-            ChunkTags.MACHINE_LEARNING: ['machine learning', 'ml', 'algorithm', 'model'],
+            # Techniques
+            ChunkTags.DEEP_LEARNING: ['neural', 'deep learning', 'activation', 'backprop', 'dropout', 'optimizer'],
+            ChunkTags.MACHINE_LEARNING: ['machine learning', 'ml algorithm', 'model'],
             ChunkTags.ENSEMBLE: ['ensemble', 'voting', 'stacking', 'bagging', 'boosting'],
-            ChunkTags.FEATURE_ENGINEERING: ['feature', 'engineering', 'extraction', 'selection'],
-            ChunkTags.EDA: ['eda', 'exploratory', 'analysis', 'visualization', 'distribution'],
+            ChunkTags.FEATURE_ENGINEERING: ['feature engineering', 'feature extraction', 'feature selection'],
+            ChunkTags.EDA: ['eda', 'exploratory data analysis', 'visualization', 'distribution', 'histogram'],
+            ChunkTags.CROSS_VALIDATION: ['cross validation', 'cross_val_score', 'kfold', 'stratifiedkfold'],
+            ChunkTags.HYPERPARAMETERS: ['hyperparameter', 'gridsearchcv', 'randomizedsearchcv', 'optuna', 'bayes'],
 
-            ChunkTags.PYTORCH: ['torch', 'pytorch', 'nn.Module'],
+            # Tools
+            ChunkTags.PYTORCH: ['torch', 'pytorch', 'nn.module'],
             ChunkTags.TENSORFLOW: ['tensorflow', 'tf.', 'keras'],
-            ChunkTags.SKLEARN: ['sklearn', 'scikit'],
+            ChunkTags.SKLEARN: ['sklearn', 'scikit-learn'],
             ChunkTags.XGBOOST: ['xgboost', 'xgb'],
             ChunkTags.LIGHTGBM: ['lightgbm', 'lgb'],
+            ChunkTags.KERAS: ['keras'],
 
-            ChunkTags.TUTORIAL: ['tutorial', 'guide', 'introduction', 'basics'],
+            # Content style
+            ChunkTags.TUTORIAL: ['tutorial', 'guide', 'introduction', 'how to'],
             ChunkTags.SOLUTION: ['solution', 'approach', 'method', 'implementation'],
             ChunkTags.DISCUSSION_TOPIC: ['discussion', 'topic', 'thread'],
-            ChunkTags.QUESTION: ['question', 'help', 'issue', 'problem'],
-            ChunkTags.ANSWER: ['answer', 'solution', 'fix'],
+            ChunkTags.QUESTION: ['question', 'how do', 'help', 'issue', 'why'],
+            ChunkTags.ANSWER: ['answer', 'try this', 'fix'],
 
+            # Performance
             ChunkTags.HIGH_SCORE: ['high score', 'top', 'leaderboard', 'winning'],
             ChunkTags.ENSEMBLE_SOLUTION: ['ensemble', 'blend', 'stack'],
             ChunkTags.BENCHMARK: ['benchmark', 'baseline', 'simple'],
 
-            ChunkTags.INSTALLATION: ['conda', 'install', 'pip'],
-            ChunkTags.IMPORTS: ['import'],
-            ChunkTags.IMPLEMENTATION: ['def', 'class'],
-            ChunkTags.EVALUATION: ['accuracy', 'score', 'metric'],
+            # Code specific
+            ChunkTags.INSTALLATION: ['pip install', 'conda install', 'pip3 install', 'apt-get install'],
+            ChunkTags.IMPORTS: ['import '],
+            ChunkTags.IMPLEMENTATION: ['def ', 'class '],
+            ChunkTags.EVALUATION: ['accuracy', 'auc', 'f1', 'logloss', 'roc', 'metric', 'score'],
+            ChunkTags.MODEL_TRAINING: ['.fit(', 'fit(', 'Trainer(', 'train('],
+            ChunkTags.MODEL_PREDICTION: ['.predict(', 'predict(', 'inference'],
+            ChunkTags.SPLIT: ['train_test_split', 'validation set', 'holdout'],
         }
 
     def generate_tags(self, text: str, code: Optional[str] = None,
-                      chunk_type: Optional[ChunkType] = None,
-                      metadata: Optional[Dict] = None) -> List[str]:
+                      metadata: Optional[Dict] = None) -> List[ChunkTags]:
         """
         Generate tags based on content
         """
         tags = set()
 
-        # Add chunk type as tag
-        if chunk_type:
-            tags.add(chunk_type.value)
-
         # Combine text for analysis
-        full_text = text.lower()
+        full_text = (text or '').lower()
         if code:
             full_text += ' ' + code.lower()
         if metadata:
-            full_text += ' ' + json.dumps(metadata).lower()
+            try:
+                full_text += ' ' + json.dumps(metadata).lower()
+            except Exception:
+                pass
 
-        # Check each tag's keywords
+        # Match tag keywords
         for tag, keywords in self.tag_keywords.items():
             for keyword in keywords:
-                if keyword.lower() in full_text:
-                    tags.add(tag.value)
+                if keyword in full_text:
+                    tags.add(tag)
                     break
 
-        return list(tags)
+        return list(sorted(tags))
 
 
 class VectorStore:
@@ -551,7 +561,6 @@ class KaggleRAGPipeline:
                     # Analyze text for tags
                     tags = self.tag_generator.generate_tags(
                         text=chunk_data['text'],
-                        chunk_type=ChunkType.MARKDOWN_CELL,
                         metadata={'header': chunk_data.get('header')}
                     )
 
@@ -593,8 +602,7 @@ class KaggleRAGPipeline:
                     tags = self.tag_generator.generate_tags(
                         text=analysis['description'],
                         code=chunk_data['code'],
-                        chunk_type=chunk_type,
-                        metadata=analysis
+                        metadata={'patterns': analysis['patterns']}
                     )
 
                     chunk = ContentChunk(
