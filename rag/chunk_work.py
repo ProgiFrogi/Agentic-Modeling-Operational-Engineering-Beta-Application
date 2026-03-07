@@ -11,23 +11,19 @@ from langchain_text_splitters import (
     MarkdownTextSplitter,
 )
 
-from rag.types import ChunkTags
+from rag.rag_types import ChunkTags
 
 
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
 
-    def __init__(self, llm_client: OpenAI):
+    def __init__(self, llm_client: OpenAI, model_name: str):
         self._llm_client = llm_client
+        self.model_name = model_name
 
     def analyze_code(self, code: str) -> Dict:
         """Analyze code and return description and metadata"""
-        analysis = {
-            'description': '',
-            'imports': [],
-            'functions': [],
-            'classes': [],
-        }
+        analysis = {'description': self._generate_description(code), 'imports': [], 'functions': [], 'classes': []}
 
         try:
             tree = ast.parse(code)
@@ -35,12 +31,8 @@ class CodeAnalyzer:
             analysis['imports'] = self._extract_imports(tree)
             analysis['functions'] = self._extract_functions(tree)
             analysis['classes'] = self._extract_classes(tree)
-            analysis['description'] = self._generate_description(code)
-
-        except SyntaxError:
-            analysis['description'] = "Code snippet (syntax could not be parsed)"
         except Exception:
-            analysis['description'] = "Code snippet"
+            pass
 
         return analysis
 
@@ -236,4 +228,4 @@ class TagGenerator:
                     tags.add(tag)
                     break
 
-        return list(sorted(tags))
+        return list(tags)
