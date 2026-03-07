@@ -216,18 +216,19 @@ def search_kernels(query: Optional[str] = None, max_results: int = 20,
     results: List[Dict] = []
     page = 1
     page_size = min(50, max(1, max_results))
+    competition_name = competition.split('/')[-1]
 
     try:
         while len(results) < max_results:
             kernels = api.kernels_list(page=page, page_size=page_size, search=query,
-                                       competition=competition, language=language,
+                                       competition=competition_name, language=language,
                                        kernel_type=kernel_type, sort_by=sort_by)
             if not kernels:
                 break
             for k in kernels:
-                owner = getattr(k, 'author', None) or getattr(k, 'owner_slug', None) or getattr(k, 'ownerRef', None)
+                author = getattr(k, 'author', None) or getattr(k, 'owner_slug', None) or getattr(k, 'ownerRef', None)
                 slug = getattr(k, 'slug', None)
-                ref = getattr(k, 'ref', None) or (f"{owner}/{slug}" if owner and slug else None)
+                ref = getattr(k, 'ref', None) or (f"{author}/{slug}" if author and slug else None)
                 title = getattr(k, 'title', None) or slug
                 if not ref:
                     continue
@@ -235,9 +236,8 @@ def search_kernels(query: Optional[str] = None, max_results: int = 20,
                     'ref': ref,
                     'title': title,
                     'url': _KAGGLE_KERNEL_URL + ref,
-                    'owner': owner,
+                    'author': author,
                     'slug': slug,
-                    'kernelType': getattr(k, 'kernel_type', None)
                 })
                 if len(results) >= max_results:
                     break
@@ -263,6 +263,8 @@ def download_kernel_notebook(kernel_ref: str, path: str = './kaggle_notebooks') 
         owner, slug = kernel_ref.split('/', 1)
         if os.path.isdir(path):
             path = f"{path}/{owner}_{slug}.ipynb"
+            with open(path, 'w') as _:
+                pass
         api.kernels_pull(kernel=kernel_ref, path=path, metadata=False, quiet=True)
         return path
     except Exception as e:

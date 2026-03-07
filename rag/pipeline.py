@@ -1,3 +1,4 @@
+import traceback
 import uuid
 from typing import List, Dict, Optional
 
@@ -6,7 +7,7 @@ from openai import OpenAI
 from rag.chunk_work import LangChainChunker, CodeAnalyzer, TagGenerator
 from rag.extractor import KaggleExtractor
 from rag.storage import VectorStore
-from rag.types import ContentType, ChunkType, ContentChunk, KaggleSource
+from rag.rag_types import ContentType, ChunkType, ContentChunk, KaggleSource
 # Kaggle helpers
 from tools.kaggle_utils import (
     search_competitions,
@@ -18,10 +19,12 @@ from tools.kaggle_utils import (
 class KaggleRAGPipeline:
     """Main pipeline for processing Kaggle content and building RAG system"""
 
-    def __init__(self, code_describe_llm: OpenAI, chunk_size: int = 500, chunk_overlap: int = 50):
+    def __init__(self, code_describe_llm: OpenAI, code_describe_model: str, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 15):
+        self.min_text_length = min_chunk_length
+
         self.extractor = KaggleExtractor()
         self.chunker = LangChainChunker(chunk_size, chunk_overlap)
-        self.code_analyzer = CodeAnalyzer(code_describe_llm)
+        self.code_analyzer = CodeAnalyzer(code_describe_llm, code_describe_model)
         self.tag_generator = TagGenerator()
         self.vector_store = VectorStore()
 
@@ -44,6 +47,8 @@ class KaggleRAGPipeline:
                 markdown_chunks = self.chunker.chunk_markdown_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(markdown_chunks):
+                    if len(chunk_data['text']) < self.min_text_length:
+                        continue
                     chunk_id = str(uuid.uuid4())
 
                     # Analyze text for tags
@@ -145,8 +150,9 @@ class KaggleRAGPipeline:
                 try:
                     src = self.process_notebook(nb_path)
                     sources.append(src)
-                except Exception as e:
-                    print(f"Error processing notebook {ref}: {e}")
+                except Exception:
+                    print(f"Error processing notebook {ref}:")
+                    traceback.print_exc()
 
         return sources
 

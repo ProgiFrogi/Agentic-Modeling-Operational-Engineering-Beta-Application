@@ -7,8 +7,9 @@ from typing import List, Dict, Optional
 from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError
 
-from rag.types import ContentChunk, ContentType, ChunkType
+from rag.rag_types import ContentChunk, ContentType, ChunkType
 
 
 class VectorStore:
@@ -23,7 +24,7 @@ class VectorStore:
         os.makedirs(persist_directory, exist_ok=True)
 
         # Initialize embedding model
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder="./models")
 
         # Initialize ChromaDB
         self.chroma_client = chromadb.PersistentClient(
@@ -38,7 +39,7 @@ class VectorStore:
         """Get existing collection or create new one"""
         try:
             return self.chroma_client.get_collection(name)
-        except ValueError:
+        except NotFoundError:
             return self.chroma_client.create_collection(
                 name=name,
                 metadata={"hnsw:space": "cosine"}
