@@ -5,21 +5,14 @@ This system extracts, processes, and indexes Kaggle content for semantic search.
 
 import os
 import json
-import hashlib
 import uuid
-
-import requests
 from enum import Enum
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from datetime import datetime
-# import pandas as pd  # unused
-import numpy as np
-from tqdm import tqdm
 
 # For code understanding
 import ast
-import inspect
 
 # For embeddings and vector storage
 from sentence_transformers import SentenceTransformer
@@ -41,29 +34,29 @@ from langchain_text_splitters import (
     MarkdownTextSplitter,
     TokenTextSplitter
 )
-# from langchain_text_splitters.base import Document  # unused
 
 
 class ContentType(Enum):
     """Enum for content type classification"""
-    CODE = "code"
-    DISCUSSION = "discussion"
+    NOTEBOOK = "notebook"
+    DISCUSSION = "discussion"  # unsupported
+
 
 class ChunkType(Enum):
     """Enum for chunk types within content"""
-    CODE_CELL = "code_cell"
     MARKDOWN_CELL = "markdown_cell"
     DISCUSSION_POST = "discussion_post"
     COMMENT = "comment"
-    FUNCTION = "function"
-    CLASS = "class"
-    CODE_SNIPPET = "code_snippet"
     EXPLANATION = "explanation"
     QUESTION = "question"
     ANSWER = "answer"
+    # Code specific
+    FUNCTION = "function"
+    CLASS = "class"
+    CODE_SNIPPET = "code_snippet"
 
 
-class KaggleTag(Enum):
+class ChunkTags(Enum):
     """Predefined tags for Kaggle content"""
     # Competition types
     COMPUTER_VISION = "computer_vision"
@@ -77,6 +70,8 @@ class KaggleTag(Enum):
     ENSEMBLE = "ensemble"
     FEATURE_ENGINEERING = "feature_engineering"
     EDA = "eda"
+    CROSS_VALIDATION = "cross_validation"
+    HYPERPARAMETERS = "hyperparameter_tuning"
 
     # Tools
     PYTORCH = "pytorch"
@@ -84,6 +79,7 @@ class KaggleTag(Enum):
     SKLEARN = "sklearn"
     XGBOOST = "xgboost"
     LIGHTGBM = "lightgbm"
+    KERAS = "keras"
 
     # Content type specific
     TUTORIAL = "tutorial"
@@ -92,25 +88,31 @@ class KaggleTag(Enum):
     QUESTION = "question"
     ANSWER = "answer"
 
-    # Data types
-    TEXT = "text"
-    NUMERIC = "numeric"
-
     # Performance
     HIGH_SCORE = "high_score"
     ENSEMBLE_SOLUTION = "ensemble_solution"
     BENCHMARK = "benchmark"
 
-tags_all = [tag for tag in KaggleTag]
-tags_all_str = [tag.value for tag in KaggleTag]
+    # Code specific
+    INSTALLATION = "installation"
+    IMPORTS = "imports"
+    IMPLEMENTATION = "implementation"
+    EVALUATION = "evaluation"
+    VISUALIZATION = "visualization"
+    MODEL_TRAINING = "model_training"
+    MODEL_PREDICTION = "model_prediction"
+    SPLIT = "train_test_split"
+
+
+tags_all = [tag for tag in ChunkTags]
+tags_all_str = [tag.value for tag in ChunkTags]
+
 
 @dataclass
 class ContentChunk:
     """Represents a single chunk of content from Kaggle"""
     id: str
-    source_id: str
     source_title: str
-    source_url: str
     chunk_type: ChunkType
     content_type: ContentType
     text: str
@@ -118,41 +120,17 @@ class ContentChunk:
     code_description: Optional[str] = None
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    position: int = 0
     chunk_size: int = 0
 
-
-@dataclass
-class KaggleContent:
-    """Data class for storing processed Kaggle content"""
-    id: str
-    title: str
-    url: str
-    content_type: ContentType
-    raw_content: str
-    processed_text: str
-    code_description: Optional[str] = None
-    tags: List[str] = None
-    metadata: Dict[str, Any] = None
-    embedding: Optional[np.ndarray] = None
-
-    def __post_init__(self):
-        if self.tags is None:
-            self.tags = []
-        if self.metadata is None:
-            self.metadata = {}
 
 @dataclass
 class KaggleSource:
     """Represents the original source (notebook or discussion)"""
     id: str
     title: str
-    url: str
     content_type: ContentType
-    author: str
-    date: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    chunks: List[str] = field(default_factory=list)
+    chunks: List[ContentChunk] = field(default_factory=list)
+
 
 class KaggleExtractor:
     """Extract content from Kaggle notebooks and discussions"""
@@ -161,11 +139,8 @@ class KaggleExtractor:
         self.api_key = api_key or os.getenv('KAGGLE_API_KEY')
 
     def extract_notebook(self, notebook_path: str) -> Dict[str, Any]:
-        """Extract content from a Kaggle notebook (IPYNB file)"""
-        if notebook_path.startswith('http') or '/' in notebook_path:
-            return self._fetch_notebook_from_kaggle(notebook_path)
-        else:
-            return self._extract_local_notebook(notebook_path)
+        """Extract content from a local Kaggle notebook (IPYNB file)"""
+        return self._extract_local_notebook(notebook_path)
 
     def _extract_local_notebook(self, filepath: str) -> Dict[str, Any]:
         """Extract content from a local IPYNB file"""
@@ -188,55 +163,12 @@ class KaggleExtractor:
             'metadata': notebook.get('metadata', {}),
             'cells': cells,
             'title': os.path.basename(filepath).replace('.ipynb', ''),
-            'author': 'unknown',
-            'date': datetime.now().isoformat()
         }
-
-    def extract_discussion(self, discussion_url: str) -> Dict[str, Any]:
-        """Extract content from a Kaggle discussion"""
-        # Mock implementation - in production, use Kaggle API or scraping
-        return {
-            'id': 'disc123',
-            'title': 'Sample Discussion',
-            'content': 'This is a long discussion about feature engineering. Many people share their experiences and code snippets.',
-            'author': 'kaggle_user',
-            'date': datetime.now().isoformat(),
-            'comments': [
-                {
-                    'text': 'Great point! I also found that feature selection is crucial.',
-                    'author': 'commenter1',
-                    'date': datetime.now().isoformat(),
-                    'level': 1
-                },
-                {
-                    'text': 'Here is a code snippet that demonstrates this:\n\ndef select_features(X, y):\n    from sklearn.feature_selection import SelectKBest\n    selector = SelectKBest(k=10)\n    X_selected = selector.fit_transform(X, y)\n    return X_selected',
-                    'author': 'commenter2',
-                    'date': datetime.now().isoformat(),
-                    'level': 1
-                }
-            ]
-        }
-
-    def search_kaggle_content(self, query: str, content_type: str = 'all', max_results: int = 100) -> List[Dict]:
-        """
-        Search for Kaggle content based on query
-        """
-        # This would use Kaggle's search API
-        # Simplified version returning mock data
-        results = []
-        for i in range(max_results):
-            results.append({
-                'id': f'content_{i}',
-                'title': f'Result {i} for {query}',
-                'type': content_type if content_type != 'all' else ['notebook', 'discussion'][i % 2],
-                'url': f'https://kaggle.com/...',
-                'relevance_score': np.random.random()
-            })
-        return sorted(results, key=lambda x: x['relevance_score'], reverse=True)
 
 
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
+
     def analyze_code(self, code: str) -> Dict:
         """Analyze code and return description and metadata"""
         analysis = {
@@ -253,7 +185,6 @@ class CodeAnalyzer:
             analysis['imports'] = self._extract_imports(tree)
             analysis['functions'] = self._extract_functions(tree)
             analysis['classes'] = self._extract_classes(tree)
-            analysis['patterns'] = self._detect_patterns(code)
             analysis['description'] = self._generate_description(analysis)
 
         except SyntaxError:
@@ -302,33 +233,6 @@ class CodeAnalyzer:
                 })
         return classes
 
-    def _detect_patterns(self, code: str) -> List[str]:
-        """Detect common ML/DL patterns in code"""
-        patterns = []
-
-        if 'sklearn' in code or 'scikit-learn' in code:
-            patterns.append('scikit-learn')
-        if 'tensorflow' in code or 'tf.' in code:
-            patterns.append('TensorFlow')
-        if 'torch' in code:
-            patterns.append('PyTorch')
-        if 'keras' in code:
-            patterns.append('Keras')
-        if 'plt.' in code or 'sns.' in code:
-            patterns.append('visualization')
-        if '.fit(' in code:
-            patterns.append('model_training')
-        if '.predict(' in code:
-            patterns.append('prediction')
-        if 'GridSearchCV' in code:
-            patterns.append('hyperparameter_tuning')
-        if 'train_test_split' in code:
-            patterns.append('data_splitting')
-        if 'cross_val_score' in code:
-            patterns.append('cross_validation')
-
-        return patterns
-
     def _generate_description(self, analysis: Dict) -> str:
         """Generate human-readable description from analysis"""
         parts = []
@@ -375,90 +279,18 @@ class LangChainChunker:
             separators=["\n\n", "\n", ".", "?", "!", " ", ""]
         )
 
-        self.token_splitter = TokenTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        
-        # Backward compatibility for older Python versions without ast.unparse
-        self._has_unparse = hasattr(ast, 'unparse')
-
     def chunk_code_cell(self, code: str, cell_index: int) -> List[Dict]:
         """
         Split a code cell using PythonCodeTextSplitter
-        Also identify functions/classes for better metadata
         """
         chunks = []
 
-        # First, try to identify functions and classes for better chunking
-        try:
-            tree = ast.parse(code)
-            functions_and_classes = []
-
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    start_line = node.lineno
-                    end_line = node.end_lineno if hasattr(node, 'end_lineno') else None
-
-                    # Get the code for this node
-                    lines = code.split('\n')
-                    if end_line:
-                        node_code = '\n'.join(lines[start_line - 1:end_line])
-                    else:
-                        # Approximate if end_line not available
-                        node_code = ast.get_source_segment(code, node) if hasattr(ast, 'get_source_segment') else (ast.unparse(node) if self._has_unparse else '\n'.join(lines[start_line - 1: start_line]))
-
-                    functions_and_classes.append({
-                        'type': 'function' if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else 'class',
-                        'name': node.name,
-                        'code': node_code,
-                        'start_line': start_line,
-                        'end_line': end_line
-                    })
-        except:
-            functions_and_classes = []
-
-        # Use LangChain's Python splitter
-        if functions_and_classes:
-            # If we have identified functions, chunk by function
-            for item in functions_and_classes:
-                # Further split large functions if needed
-                if len(item['code'].split('\n')) > self.chunk_size / 10:  # Rough estimate
-                    sub_chunks = self.python_splitter.split_text(item['code'])
-                    for j, sub_chunk in enumerate(sub_chunks):
-                        chunks.append({
-                            'type': item['type'],
-                            'name': item['name'],
-                            'code': sub_chunk,
-                            'description': f"{item['type']} {item['name']} (part {j + 1})",
-                            'start_line': item['start_line'],
-                            'is_sub_chunk': True,
-                            'sub_index': j
-                        })
-                else:
-                    chunks.append({
-                        'type': item['type'],
-                        'name': item['name'],
-                        'code': item['code'],
-                        'description': f"{item['type']} {item['name']}",
-                        'start_line': item['start_line'],
-                        'is_sub_chunk': False
-                    })
-        else:
-            # No clear structure, use recursive splitting
-            split_code = self.python_splitter.split_text(code)
-            for i, chunk in enumerate(split_code):
-                chunks.append({
-                    'type': 'code_snippet',
-                    'code': chunk,
-                    'description': f"Code snippet (part {i + 1})",
-                    'start_line': i * self.chunk_size + 1,
-                    'is_sub_chunk': False
-                })
-
-        # Add cell index to all chunks
-        for chunk in chunks:
-            chunk['cell_index'] = cell_index
+        split_code = self.python_splitter.split_text(code)
+        for i, chunk in enumerate(split_code):
+            chunks.append({
+                'code': chunk,
+                'cell_index': cell_index,
+            })
 
         return chunks
 
@@ -479,58 +311,8 @@ class LangChainChunker:
             chunks.append({
                 'text': chunk,
                 'header': header,
-                'type': 'markdown_section',
                 'cell_index': cell_index,
-                'sub_index': i
             })
-
-        return chunks
-
-    def chunk_discussion(self, discussion_data: Dict) -> List[Dict]:
-        """
-        Split discussion content using recursive splitter
-        """
-        chunks = []
-
-        # Main post
-        main_post = discussion_data.get('content', '')
-        if main_post:
-            post_chunks = self.recursive_splitter.split_text(main_post)
-            for i, chunk in enumerate(post_chunks):
-                chunks.append({
-                    'type': 'discussion_post',
-                    'text': chunk,
-                    'author': discussion_data.get('author'),
-                    'date': discussion_data.get('date'),
-                    'position': i,
-                    'thread_level': 0,
-                    'is_main_post': True
-                })
-
-        # Comments
-        for i, comment in enumerate(discussion_data.get('comments', [])):
-            comment_text = comment.get('text', '')
-            if comment_text:
-                # Check if comment contains code
-                if 'def ' in comment_text or 'import ' in comment_text or '=' in comment_text:
-                    # Use code splitter for code-heavy comments
-                    comment_chunks = self.python_splitter.split_text(comment_text)
-                    chunk_type = 'code_comment'
-                else:
-                    comment_chunks = self.recursive_splitter.split_text(comment_text)
-                    chunk_type = 'comment'
-
-                for j, chunk in enumerate(comment_chunks):
-                    chunks.append({
-                        'type': chunk_type,
-                        'text': chunk,
-                        'author': comment.get('author'),
-                        'date': comment.get('date'),
-                        'position': i,
-                        'sub_position': j,
-                        'thread_level': comment.get('level', 1),
-                        'parent_id': comment.get('parent_id')
-                    })
 
         return chunks
 
@@ -540,35 +322,37 @@ class TagGenerator:
 
     def __init__(self):
         self.tag_keywords = {
-            KaggleTag.COMPUTER_VISION: ['cv2', 'opencv', 'image', 'cnn', 'conv', 'resnet', 'vgg', 'yolo'],
-            KaggleTag.NLP: ['nlp', 'text', 'bert', 'transformer', 'token', 'sentence', 'word2vec', 'glove'],
-            KaggleTag.TABULAR: ['pandas', 'dataframe', 'tabular', 'csv', 'excel', 'table'],
-            KaggleTag.TIME_SERIES: ['time', 'series', 'date', 'temporal', 'seasonal', 'forecast'],
+            ChunkTags.COMPUTER_VISION: ['cv2', 'opencv', 'image', 'cnn', 'conv', 'resnet', 'vgg', 'yolo'],
+            ChunkTags.NLP: ['nlp', 'text', 'bert', 'transformer', 'token', 'sentence', 'word2vec', 'glove'],
+            ChunkTags.TABULAR: ['pandas', 'dataframe', 'tabular', 'csv', 'excel', 'table'],
+            ChunkTags.TIME_SERIES: ['time', 'series', 'date', 'temporal', 'seasonal', 'forecast'],
 
-            KaggleTag.DEEP_LEARNING: ['neural', 'deep', 'layer', 'activation', 'backprop'],
-            KaggleTag.MACHINE_LEARNING: ['machine learning', 'ml', 'algorithm', 'model'],
-            KaggleTag.ENSEMBLE: ['ensemble', 'voting', 'stacking', 'bagging', 'boosting'],
-            KaggleTag.FEATURE_ENGINEERING: ['feature', 'engineering', 'extraction', 'selection'],
-            KaggleTag.EDA: ['eda', 'exploratory', 'analysis', 'visualization', 'distribution'],
+            ChunkTags.DEEP_LEARNING: ['neural', 'deep', 'layer', 'activation', 'backprop'],
+            ChunkTags.MACHINE_LEARNING: ['machine learning', 'ml', 'algorithm', 'model'],
+            ChunkTags.ENSEMBLE: ['ensemble', 'voting', 'stacking', 'bagging', 'boosting'],
+            ChunkTags.FEATURE_ENGINEERING: ['feature', 'engineering', 'extraction', 'selection'],
+            ChunkTags.EDA: ['eda', 'exploratory', 'analysis', 'visualization', 'distribution'],
 
-            KaggleTag.PYTORCH: ['torch', 'pytorch', 'nn.Module'],
-            KaggleTag.TENSORFLOW: ['tensorflow', 'tf.', 'keras'],
-            KaggleTag.SKLEARN: ['sklearn', 'scikit'],
-            KaggleTag.XGBOOST: ['xgboost', 'xgb'],
-            KaggleTag.LIGHTGBM: ['lightgbm', 'lgb'],
+            ChunkTags.PYTORCH: ['torch', 'pytorch', 'nn.Module'],
+            ChunkTags.TENSORFLOW: ['tensorflow', 'tf.', 'keras'],
+            ChunkTags.SKLEARN: ['sklearn', 'scikit'],
+            ChunkTags.XGBOOST: ['xgboost', 'xgb'],
+            ChunkTags.LIGHTGBM: ['lightgbm', 'lgb'],
 
-            KaggleTag.TUTORIAL: ['tutorial', 'guide', 'introduction', 'basics'],
-            KaggleTag.SOLUTION: ['solution', 'approach', 'method', 'implementation'],
-            KaggleTag.DISCUSSION_TOPIC: ['discussion', 'topic', 'thread'],
-            KaggleTag.QUESTION: ['question', 'help', 'issue', 'problem'],
-            KaggleTag.ANSWER: ['answer', 'solution', 'fix'],
+            ChunkTags.TUTORIAL: ['tutorial', 'guide', 'introduction', 'basics'],
+            ChunkTags.SOLUTION: ['solution', 'approach', 'method', 'implementation'],
+            ChunkTags.DISCUSSION_TOPIC: ['discussion', 'topic', 'thread'],
+            ChunkTags.QUESTION: ['question', 'help', 'issue', 'problem'],
+            ChunkTags.ANSWER: ['answer', 'solution', 'fix'],
 
-            KaggleTag.TEXT: ['text', 'string', 'character'],
-            KaggleTag.NUMERIC: ['int', 'float', 'numeric', 'number'],
+            ChunkTags.HIGH_SCORE: ['high score', 'top', 'leaderboard', 'winning'],
+            ChunkTags.ENSEMBLE_SOLUTION: ['ensemble', 'blend', 'stack'],
+            ChunkTags.BENCHMARK: ['benchmark', 'baseline', 'simple'],
 
-            KaggleTag.HIGH_SCORE: ['high score', 'top', 'leaderboard', 'winning'],
-            KaggleTag.ENSEMBLE_SOLUTION: ['ensemble', 'blend', 'stack'],
-            KaggleTag.BENCHMARK: ['benchmark', 'baseline', 'simple']
+            ChunkTags.INSTALLATION: ['conda', 'install', 'pip'],
+            ChunkTags.IMPORTS: ['import'],
+            ChunkTags.IMPLEMENTATION: ['def', 'class'],
+            ChunkTags.EVALUATION: ['accuracy', 'score', 'metric'],
         }
 
     def generate_tags(self, text: str, code: Optional[str] = None,
@@ -597,29 +381,17 @@ class TagGenerator:
                     tags.add(tag.value)
                     break
 
-        # Content-specific heuristics
-        if 'def ' in full_text or 'class ' in full_text:
-            tags.add('has_implementation')
-
-        if 'plt.' in full_text or 'plot' in full_text or 'figure' in full_text:
-            tags.add('visualization')
-
-        if 'accuracy' in full_text or 'score' in full_text or 'metric' in full_text:
-            tags.add('evaluation')
-
-        if 'error' in full_text or 'bug' in full_text or 'issue' in full_text:
-            tags.add('debugging')
-
-        if 'install' in full_text or 'pip' in full_text or 'conda' in full_text:
-            tags.add('installation')
-
         return list(tags)
 
 
 class VectorStore:
     """Manage vector storage and retrieval of Kaggle content"""
 
-    def __init__(self, persist_directory: str = "./kaggle_vector_store"):
+    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 5000,
+                 preview_limit: int = 1000):
+        self.encode_limit = encode_limit
+        self.preview_limit = preview_limit
+
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
 
@@ -649,24 +421,21 @@ class VectorStore:
         """Add a single chunk to vector store"""
         # Prepare text for embedding
         text_to_embed = chunk.text
-        if chunk.code:
-            text_to_embed += f"\n\nCode:\n{chunk.code}"
         if chunk.code_description:
-            text_to_embed += f"\n\nDescription: {chunk.code_description}"
+            text_to_embed += chunk.code_description
+        else:
+            text_to_embed = chunk.text
 
         # Generate embedding
-        embedding = self.embedding_model.encode(text_to_embed[:5000]).tolist()  # Limit length
+        embedding = self.embedding_model.encode(text_to_embed[:self.encode_limit]).tolist()
 
         # Prepare metadata (ensure all values are strings or numbers)
         metadata = {
             "chunk_id": chunk.id,
-            "source_id": chunk.source_id,
             "source_title": str(chunk.source_title)[:100],
-            "source_url": str(chunk.source_url)[:200],
             "chunk_type": chunk.chunk_type.value,
             "content_type": chunk.content_type.value,
             "tags": json.dumps(chunk.tags)[:1000],
-            "position": chunk.position,
             "chunk_size": chunk.chunk_size,
         }
 
@@ -681,7 +450,7 @@ class VectorStore:
         # Add to ChromaDB
         self.chunks_collection.add(
             embeddings=[embedding],
-            documents=[text_to_embed[:1000]],  # Store preview
+            documents=[text_to_embed[:self.preview_limit]],
             metadatas=[metadata],
             ids=[chunk.id]
         )
@@ -758,27 +527,12 @@ class KaggleRAGPipeline:
         self.tag_generator = TagGenerator()
         self.vector_store = VectorStore()
 
-    def process_notebook(self, notebook_source: str, source_type: str = 'local') -> KaggleSource:
+    def process_notebook(self, notebook_source: str) -> KaggleSource:
         """
         Process a Kaggle notebook and chunk it
         """
         # Extract notebook content
         notebook_data = self.extractor.extract_notebook(notebook_source)
-
-        # Create source record
-        source_id = str(uuid.uuid4())
-        source = KaggleSource(
-            id=source_id,
-            title=notebook_data.get('title', 'Untitled'),
-            url=f"https://kaggle.com/{notebook_source}" if source_type == 'kaggle' else '',
-            content_type=ContentType.CODE,
-            author=notebook_data.get('author', 'unknown'),
-            date=notebook_data.get('date', datetime.now().isoformat()),
-            metadata={
-                'cell_count': len(notebook_data.get('cells', [])),
-                'source_type': source_type
-            }
-        )
 
         # Process each cell
         chunks = []
@@ -788,7 +542,7 @@ class KaggleRAGPipeline:
             cell_index = cell['index']
 
             if cell_type == 'markdown':
-                # Chunk markdown using LangChain
+                # Chunk markdown
                 markdown_chunks = self.chunker.chunk_markdown_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(markdown_chunks):
@@ -801,17 +555,11 @@ class KaggleRAGPipeline:
                         metadata={'header': chunk_data.get('header')}
                     )
 
-                    # Add specific tag if it's a header
-                    if chunk_data.get('header'):
-                        tags.append('section_header')
-
                     chunk = ContentChunk(
                         id=chunk_id,
-                        source_id=source_id,
-                        source_title=source.title,
-                        source_url=source.url,
+                        source_title=notebook_data['title'],
                         chunk_type=ChunkType.MARKDOWN_CELL,
-                        content_type=ContentType.CODE,
+                        content_type=ContentType.NOTEBOOK,
                         text=chunk_data['text'],
                         tags=tags,
                         metadata={
@@ -820,30 +568,30 @@ class KaggleRAGPipeline:
                             'sub_index': i,
                             'is_header': bool(chunk_data.get('header'))
                         },
-                        position=cell_index * 1000 + i
+                        chunk_size=len(chunk_data['text'])
                     )
 
                     chunks.append(chunk)
 
             elif cell_type == 'code':
-                # Analyze code for description
-                analysis = self.code_analyzer.analyze_code(content)
-
-                # Chunk code using LangChain
+                # Chunk code
                 code_chunks = self.chunker.chunk_code_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(code_chunks):
                     chunk_id = str(uuid.uuid4())
+                    analysis = self.code_analyzer.analyze_code(chunk_data['code'])
 
                     # Determine chunk type
-                    if chunk_data['type'] in ['function', 'class']:
-                        chunk_type = ChunkType.FUNCTION if chunk_data['type'] == 'function' else ChunkType.CLASS
+                    if analysis['classes']:
+                        chunk_type = ChunkType.FUNCTION
+                    elif analysis['functions']:
+                        chunk_type = ChunkType.CLASS
                     else:
                         chunk_type = ChunkType.CODE_SNIPPET
 
                     # Generate tags
                     tags = self.tag_generator.generate_tags(
-                        text=chunk_data['description'],
+                        text=analysis['description'],
                         code=chunk_data['code'],
                         chunk_type=chunk_type,
                         metadata=analysis
@@ -851,11 +599,9 @@ class KaggleRAGPipeline:
 
                     chunk = ContentChunk(
                         id=chunk_id,
-                        source_id=source_id,
-                        source_title=source.title,
-                        source_url=source.url,
+                        source_title=notebook_data['title'],
                         chunk_type=chunk_type,
-                        content_type=ContentType.CODE,
+                        content_type=ContentType.NOTEBOOK,
                         text=chunk_data['description'],
                         code=chunk_data['code'],
                         code_description=chunk_data['description'],
@@ -869,15 +615,16 @@ class KaggleRAGPipeline:
                             'is_sub_chunk': chunk_data.get('is_sub_chunk', False),
                             **analysis
                         },
-                        position=cell_index * 1000 + i + 500  # Code after markdown
                     )
 
                     chunks.append(chunk)
 
-        # Add all chunks to vector store
-        for chunk in chunks:
-            self.vector_store.add_chunk(chunk)
-            source.chunks.append(chunk.id)
+        source = KaggleSource(
+            id=str(uuid.uuid4()),
+            title=notebook_data['title'],
+            content_type=ContentType.NOTEBOOK,
+            chunks=chunks
+        )
 
         print(f"Processed notebook '{source.title}' into {len(chunks)} chunks")
         return source
@@ -917,116 +664,6 @@ class KaggleRAGPipeline:
 
         return sources
 
-    def process_discussion(self, discussion_url: str) -> KaggleSource:
-        """
-        Process a Kaggle discussion and chunk it
-        """
-        # Extract discussion content
-        discussion_data = self.extractor.extract_discussion(discussion_url)
-
-        # Create source record
-        source_id = str(uuid.uuid4())
-        source = KaggleSource(
-            id=source_id,
-            title=discussion_data.get('title', 'Untitled Discussion'),
-            url=discussion_url,
-            content_type=ContentType.DISCUSSION,
-            author=discussion_data.get('author', 'unknown'),
-            date=discussion_data.get('date', datetime.now().isoformat()),
-            metadata={
-                'comment_count': len(discussion_data.get('comments', []))
-            }
-        )
-
-        # Chunk discussion using LangChain
-        discussion_chunks = self.chunker.chunk_discussion(discussion_data)
-
-        chunks = []
-        for i, chunk_data in enumerate(discussion_chunks):
-            chunk_id = str(uuid.uuid4())
-
-            # Determine chunk type
-            if chunk_data['type'] == 'discussion_post':
-                chunk_type = ChunkType.DISCUSSION_POST
-            elif chunk_data['type'] == 'code_comment':
-                chunk_type = ChunkType.CODE_SNIPPET
-            else:
-                chunk_type = ChunkType.COMMENT
-
-            # Check if it's a question or answer
-            text_lower = chunk_data['text'].lower()
-            if '?' in chunk_data['text'] or any(q in text_lower for q in ['how to', 'why', 'help']):
-                tags = [KaggleTag.QUESTION.value]
-            elif any(a in text_lower for a in ['answer', 'solution', 'try this']):
-                tags = [KaggleTag.ANSWER.value]
-            else:
-                tags = []
-
-            # Generate additional tags
-            more_tags = self.tag_generator.generate_tags(
-                text=chunk_data['text'],
-                chunk_type=chunk_type
-            )
-            tags.extend(more_tags)
-
-            chunk = ContentChunk(
-                id=chunk_id,
-                source_id=source_id,
-                source_title=source.title,
-                source_url=source.url,
-                chunk_type=chunk_type,
-                content_type=ContentType.DISCUSSION,
-                text=chunk_data['text'],
-                tags=tags,
-                metadata={
-                    'author': chunk_data.get('author'),
-                    'date': chunk_data.get('date'),
-                    'thread_level': chunk_data.get('thread_level', 0),
-                    'position': chunk_data.get('position', i),
-                    'sub_position': chunk_data.get('sub_position', 0),
-                    'is_main_post': chunk_data.get('is_main_post', False),
-                    'parent_id': chunk_data.get('parent_id')
-                },
-                position=i
-            )
-
-            chunks.append(chunk)
-
-        # Add all chunks to vector store
-        for chunk in chunks:
-            self.vector_store.add_chunk(chunk)
-            source.chunks.append(chunk.id)
-
-        print(f"Processed discussion '{source.title}' into {len(chunks)} chunks")
-        return source
-
-    def batch_process(self, sources: List[Dict]) -> List[KaggleSource]:
-        """
-        Process multiple sources (both notebooks and discussions)
-        """
-        processed_sources = []
-
-        for source_info in tqdm(sources, desc="Processing Kaggle content"):
-            try:
-                if source_info['type'] == 'notebook':
-                    source = self.process_notebook(
-                        source_info['source'],
-                        source_info.get('source_type', 'local')
-                    )
-                elif source_info['type'] == 'discussion':
-                    source = self.process_discussion(source_info['source'])
-                else:
-                    print(f"Unknown source type: {source_info['type']}")
-                    continue
-
-                processed_sources.append(source)
-
-            except Exception as e:
-                print(f"Error processing {source_info}: {str(e)}")
-                continue
-
-        return processed_sources
-
     def search(self, query: str, content_type: Optional[ContentType] = None,
                chunk_type: Optional[ChunkType] = None,
                tags: Optional[List[str]] = None,
@@ -1042,86 +679,30 @@ class KaggleRAGPipeline:
             n_results=n_results
         )
 
-    def get_context_for_query(self, query: str, n_chunks: int = 5) -> str:
-        """
-        Get relevant chunks and format them as context for an LLM
-        """
-        results = self.search(query, n_results=n_chunks)
 
-        context_parts = []
-        for i, result in enumerate(results):
-            # Get full chunk text (would need to retrieve from storage)
-            # For now, use what we have
-            context_parts.append(f"[{i + 1}] From: {result['source_title']}")
-            context_parts.append(f"Type: {result['chunk_type']}")
-            context_parts.append(f"Tags: {', '.join(result['tags'][:5])}")
-            context_parts.append("---")
-
-        return '\n'.join(context_parts)
-
-
-# Example usage and testing
+# Example usage
 def main():
-    """Example of how to use the Kaggle RAG system"""
-
-    # Initialize pipeline
+    """Build an index from Kaggle and demonstrate a search."""
     pipeline = KaggleRAGPipeline()
 
-    # Example 4: Build index from Kaggle search (requires Kaggle API auth)
     try:
-        print("\nBuilding index from Kaggle search...")
-        kaggle_sources = pipeline.build_index_from_kaggle(
+        print("Building index from Kaggle...")
+        sources = pipeline.build_index_from_kaggle(
             query="tabular",
             n_competitions=1,
             notebooks_per_comp=1,
-            discussions_per_comp=1,
         )
-        print(f"Indexed {len(kaggle_sources)} Kaggle-derived sources")
+        print(f"Indexed {len(sources)} sources from Kaggle.")
     except Exception as e:
-        print(f"Skipping Kaggle search demo: {e}")
+        print(f"Kaggle indexing skipped: {e}")
 
-    # Example 5: Search
-    print("\nSearching for content...")
+    print("\nSearch demo:")
     results = pipeline.search(
-        query="How to do feature engineering for tabular data?",
-        content_type=ContentType.DISCUSSION,
-        tags=['feature_engineering', 'tabular'],
-        n_results=5
+        query="tabular feature engineering",
+        n_results=5,
     )
-
-    print(f"Found {len(results)} results:")
-    for i, result in enumerate(results):
-        print(f"\n{i + 1}. Type: {result['chunk_type']}")
-        print(f"   Title: {result['source_title']}")
-        print(f"   Similarity: {result['similarity_score']:.3f}")
-        print(f"   Tags: {', '.join(result['tags'])[:100]}...")
-
-    # Example 6: Agent-based querying with specific requirements
-    print("\n=== Agent Query Examples ===")
-
-    # Agent 1: Looking for PyTorch code solutions
-    code_results = pipeline.search(
-        query="image classification using PyTorch",
-        content_type=ContentType.CODE,
-        tags=['computer_vision', 'pytorch', 'deep_learning'],
-        n_results=3
-    )
-
-    print("\nAgent 1 (Code Specialist) Results:")
-    for r in code_results:
-        print(f"- {r['source_title']} (Score: {r['similarity_score']:.2f})")
-
-    # Agent 2: Looking for discussion insights
-    discussion_results = pipeline.search(
-        query="best practices for handling missing values",
-        content_type=ContentType.DISCUSSION,
-        tags=['tabular', 'feature_engineering'],
-        n_results=3
-    )
-
-    print("\nAgent 2 (Discussion Analyst) Results:")
-    for r in discussion_results:
-        print(f"- {r['source_title']} (Score: {r['similarity_score']:.2f})")
+    for i, r in enumerate(results, 1):
+        print(f"{i}. [{r['chunk_type']}] {r['source_title']} (score={r['similarity_score']:.3f})")
 
 
 if __name__ == "__main__":
