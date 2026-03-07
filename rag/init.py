@@ -10,6 +10,7 @@ from enum import Enum
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+from openai import OpenAI
 
 # For code understanding
 import ast
@@ -45,11 +46,6 @@ class ContentType(Enum):
 class ChunkType(Enum):
     """Enum for chunk types within content"""
     MARKDOWN_CELL = "markdown_cell"
-    DISCUSSION_POST = "discussion_post"
-    COMMENT = "comment"
-    EXPLANATION = "explanation"
-    QUESTION = "question"
-    ANSWER = "answer"
     # Code specific
     FUNCTION = "function"
     CLASS = "class"
@@ -169,6 +165,10 @@ class KaggleExtractor:
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
 
+    def __init__(self, model_name: str):
+        self._llm_client = OpenAI()
+        self.model_name = model_name
+
     def analyze_code(self, code: str) -> Dict:
         """Analyze code and return description and metadata"""
         analysis = {
@@ -176,7 +176,6 @@ class CodeAnalyzer:
             'imports': [],
             'functions': [],
             'classes': [],
-            'patterns': [],
         }
 
         try:
@@ -185,7 +184,7 @@ class CodeAnalyzer:
             analysis['imports'] = self._extract_imports(tree)
             analysis['functions'] = self._extract_functions(tree)
             analysis['classes'] = self._extract_classes(tree)
-            analysis['description'] = self._generate_description(analysis)
+            analysis['description'] = self._generate_description(code)
 
         except SyntaxError:
             analysis['description'] = "Code snippet (syntax could not be parsed)"
@@ -233,26 +232,28 @@ class CodeAnalyzer:
                 })
         return classes
 
-    def _generate_description(self, analysis: Dict) -> str:
-        """Generate human-readable description from analysis"""
-        parts = []
+    def _generate_description(self, code: str) -> str:
+        """Generate human-readable description using an LLM if available, otherwise fallback."""
+        sys_prompt = (
+            "You are a senior Python ML engineer. Summarize the given code analysis into one or two concise sentences. "
+            "Focus on: main libraries, purpose, notable functions/classes, and ML workflow steps (training, CV, inference). "
+            "Avoid hedging and avoid markdown. Keep under 35 words."
+        )
 
-        if analysis['imports']:
-            main_libs = [imp for imp in analysis['imports'] if imp in
-                         ['tensorflow', 'torch', 'sklearn', 'pandas', 'numpy', 'matplotlib']]
-            if main_libs:
-                parts.append(f"Uses {', '.join(main_libs[:3])}")
-
-        if analysis['functions']:
-            parts.append(f"Defines {len(analysis['functions'])} functions")
-
-        if analysis['classes']:
-            parts.append(f"Defines {len(analysis['classes'])} classes")
-
-        if analysis['patterns']:
-            parts.append(f"Implements {', '.join(analysis['patterns'])}")
-
-        return '. '.join(parts)
+        try:
+            resp = self._llm_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": code}
+                ],
+                temperature=0.2,
+                max_tokens=60,
+            )
+            msg = resp.choices[0].message.content.strip() if resp and resp.choices else ''
+            return msg
+        except Exception:
+            return code
 
 
 class LangChainChunker:
@@ -262,7 +263,6 @@ class LangChainChunker:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-        # Initialize LangChain splitters
         self.python_splitter = PythonCodeTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
@@ -271,12 +271,6 @@ class LangChainChunker:
         self.markdown_splitter = MarkdownTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
-        )
-
-        self.recursive_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", ".", "?", "!", " ", ""]
         )
 
     def chunk_code_cell(self, code: str, cell_index: int) -> List[Dict]:
@@ -430,9 +424,8 @@ class VectorStore:
     def add_chunk(self, chunk: ContentChunk):
         """Add a single chunk to vector store"""
         # Prepare text for embedding
-        text_to_embed = chunk.text
         if chunk.code_description:
-            text_to_embed += chunk.code_description
+            text_to_embed = chunk.code_description
         else:
             text_to_embed = chunk.text
 
@@ -440,12 +433,13 @@ class VectorStore:
         embedding = self.embedding_model.encode(text_to_embed[:self.encode_limit]).tolist()
 
         # Prepare metadata (ensure all values are strings or numbers)
+        tag_values = [t.value if isinstance(t, Enum) else str(t) for t in (chunk.tags or [])]
         metadata = {
             "chunk_id": chunk.id,
             "source_title": str(chunk.source_title)[:100],
             "chunk_type": chunk.chunk_type.value,
             "content_type": chunk.content_type.value,
-            "tags": json.dumps(chunk.tags)[:1000],
+            "tags": json.dumps(tag_values)[:1000],
             "chunk_size": chunk.chunk_size,
         }
 
@@ -567,8 +561,8 @@ class KaggleRAGPipeline:
                     chunk = ContentChunk(
                         id=chunk_id,
                         source_title=notebook_data['title'],
-                        chunk_type=ChunkType.MARKDOWN_CELL,
                         content_type=ContentType.NOTEBOOK,
+                        chunk_type=ChunkType.MARKDOWN_CELL,
                         text=chunk_data['text'],
                         tags=tags,
                         metadata={
@@ -592,36 +586,26 @@ class KaggleRAGPipeline:
 
                     # Determine chunk type
                     if analysis['classes']:
-                        chunk_type = ChunkType.FUNCTION
-                    elif analysis['functions']:
                         chunk_type = ChunkType.CLASS
+                    elif analysis['functions']:
+                        chunk_type = ChunkType.FUNCTION
                     else:
                         chunk_type = ChunkType.CODE_SNIPPET
 
-                    # Generate tags
-                    tags = self.tag_generator.generate_tags(
-                        text=analysis['description'],
-                        code=chunk_data['code'],
-                        metadata={'patterns': analysis['patterns']}
-                    )
+                    tags = self.tag_generator.generate_tags(text=analysis['description'], code=chunk_data['code'])
 
                     chunk = ContentChunk(
                         id=chunk_id,
                         source_title=notebook_data['title'],
                         chunk_type=chunk_type,
                         content_type=ContentType.NOTEBOOK,
-                        text=chunk_data['description'],
+                        text='',
                         code=chunk_data['code'],
-                        code_description=chunk_data['description'],
+                        code_description=analysis['description'],
                         tags=tags,
                         metadata={
-                            'code_type': chunk_data['type'],
-                            'name': chunk_data.get('name', ''),
-                            'start_line': chunk_data.get('start_line', 0),
                             'cell_index': cell_index,
                             'sub_index': i,
-                            'is_sub_chunk': chunk_data.get('is_sub_chunk', False),
-                            **analysis
                         },
                     )
 
@@ -665,7 +649,7 @@ class KaggleRAGPipeline:
                 if not nb_path:
                     continue
                 try:
-                    src = self.process_notebook(nb_path, source_type='local')
+                    src = self.process_notebook(nb_path)
                     sources.append(src)
                 except Exception as e:
                     print(f"Error processing notebook {ref}: {e}")
