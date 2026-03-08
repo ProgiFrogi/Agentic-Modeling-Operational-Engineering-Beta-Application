@@ -1,6 +1,7 @@
 import os
-import json
+import nbformat
 from typing import Dict, Any, Optional
+import re
 
 class KaggleExtractor:
     """Extract content from Kaggle notebooks and discussions"""
@@ -15,10 +16,10 @@ class KaggleExtractor:
     def _extract_local_notebook(self, filepath: str) -> Dict[str, Any]:
         """Extract content from a local IPYNB file"""
         with open(filepath, 'r', encoding='utf-8') as f:
-            notebook = json.load(f)
+            notebook = nbformat.read(f, nbformat.NO_CONVERT)
 
         cells = []
-        for i, cell in enumerate(notebook.get('cells', [])):
+        for i, cell in enumerate(notebook.cells):
             cell_type = cell.get('cell_type', '')
             source = ''.join(cell.get('source', []))
 

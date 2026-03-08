@@ -73,7 +73,7 @@ class ContentChunk:
     source_title: str
     chunk_type: ChunkType
     content_type: ContentType
-    text: str
+    text: str  # what is actually stored and retrieved
     code: Optional[str] = None
     code_description: Optional[str] = None
     tags: List[ChunkTags] = field(default_factory=list)
