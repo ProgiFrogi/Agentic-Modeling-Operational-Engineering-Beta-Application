@@ -15,11 +15,10 @@ from tools.kaggle_utils import (
     download_kernel_notebook,
 )
 
-
 class KaggleRAGPipeline:
     """Main pipeline for processing Kaggle content and building RAG system"""
 
-    def __init__(self, code_describe_llm: OpenAI, code_describe_model: str, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 15):
+    def __init__(self, code_describe_llm: OpenAI, code_describe_model: str, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30):
         self.min_text_length = min_chunk_length
 
         self.extractor = KaggleExtractor()
@@ -98,7 +97,7 @@ class KaggleRAGPipeline:
                         source_title=notebook_data['title'],
                         chunk_type=chunk_type,
                         content_type=ContentType.NOTEBOOK,
-                        text='',
+                        text=chunk_data['code'],
                         code=chunk_data['code'],
                         code_description=analysis['description'],
                         tags=tags,
@@ -122,18 +121,16 @@ class KaggleRAGPipeline:
 
     def build_index_from_kaggle(self, query: Optional[str] = None, n_competitions: int = 3,
                                 notebooks_per_comp: int = 5, discussions_per_comp: int = 5,
-                                download_dir: str = "./kaggle_notebooks") -> List[KaggleSource]:
+                                download_dir: str = "./kaggle_notebooks"):
         """
         Use Kaggle search utilities to collect competitions, then fetch notebooks and discussions
         and process them into the vector store.
         """
 
-        sources: List[KaggleSource] = []
-
         comps = search_competitions(query=query, max_results=n_competitions)
         if not comps:
             print("No competitions found for given query.")
-            return sources
+            return
 
         for comp in comps:
             comp_ref = comp.get('ref')
@@ -149,12 +146,11 @@ class KaggleRAGPipeline:
                     continue
                 try:
                     src = self.process_notebook(nb_path)
-                    sources.append(src)
+                    for chunk in src.chunks:
+                        self.vector_store.add_chunk(chunk)
                 except Exception:
                     print(f"Error processing notebook {ref}:")
                     traceback.print_exc()
-
-        return sources
 
     def search(self, query: str, content_type: Optional[ContentType] = None,
                chunk_type: Optional[ChunkType] = None,

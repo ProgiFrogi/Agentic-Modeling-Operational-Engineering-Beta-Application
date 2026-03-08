@@ -17,9 +17,10 @@ from rag.rag_types import ChunkTags
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
 
-    def __init__(self, llm_client: OpenAI, model_name: str):
+    def __init__(self, llm_client: OpenAI, model_name: str, description_limit: int = 500):
         self._llm_client = llm_client
         self.model_name = model_name
+        self.description_limit = description_limit
 
     def analyze_code(self, code: str) -> Dict:
         """Analyze code and return description and metadata"""
@@ -79,21 +80,17 @@ class CodeAnalyzer:
         """Generate human-readable description using an LLM if available, otherwise fallback."""
         sys_prompt = (
             "You are a senior Python ML engineer. Summarize the given code analysis into one or two concise sentences. "
-            "Focus on: main libraries, purpose, notable functions/classes, and ML workflow steps (training, CV, inference). "
-            "Avoid hedging and avoid markdown. Keep under 35 words."
+            "Respond with plain text explanations only, never code and never markdown. "
+            "Avoid hedging, markdown and comments. "
+            "Under no conditions continue given code. "
         )
 
         try:
-            resp = self._llm_client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": code}
-                ],
-                temperature=0.2,
-                max_tokens=60,
-            )
-            msg = resp.choices[0].message.content.strip() if resp and resp.choices else ''
+            resp = self._llm_client.chat.completions.create(model=self.model_name, messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": f"Here is the code: {code} \nSummarize in up to three sentences."}
+            ], temperature=0.2, max_tokens=self.description_limit)
+            msg = resp.choices[0].message.content.replace('<|im_start|>', '').strip()
             return msg
         except Exception:
             return code
@@ -125,6 +122,7 @@ class LangChainChunker:
         split_code = self.python_splitter.split_text(code)
         for i, chunk in enumerate(split_code):
             chunks.append({
+                'text': chunk,
                 'code': chunk,
                 'cell_index': cell_index,
             })

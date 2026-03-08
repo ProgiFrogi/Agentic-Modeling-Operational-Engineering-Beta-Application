@@ -15,10 +15,8 @@ from rag.rag_types import ContentChunk, ContentType, ChunkType
 class VectorStore:
     """Manage vector storage and retrieval of Kaggle content"""
 
-    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 5000,
-                 preview_limit: int = 1000):
+    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 3000):
         self.encode_limit = encode_limit
-        self.preview_limit = preview_limit
 
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
@@ -47,13 +45,10 @@ class VectorStore:
 
     def add_chunk(self, chunk: ContentChunk):
         """Add a single chunk to vector store"""
-        # Prepare text for embedding
         if chunk.code_description:
             text_to_embed = chunk.code_description
         else:
             text_to_embed = chunk.text
-
-        # Generate embedding
         embedding = self.embedding_model.encode(text_to_embed[:self.encode_limit]).tolist()
 
         # Prepare metadata (ensure all values are strings or numbers)
@@ -78,7 +73,7 @@ class VectorStore:
         # Add to ChromaDB
         self.chunks_collection.add(
             embeddings=[embedding],
-            documents=[text_to_embed[:self.preview_limit]],
+            documents=[chunk.text],
             metadatas=[metadata],
             ids=[chunk.id]
         )
@@ -110,7 +105,8 @@ class VectorStore:
         # Format results
         formatted_results = []
         if results['ids'] and results['ids'][0]:
-            for idx, (chunk_id, metadata, distance) in enumerate(zip(
+            for idx, (content, chunk_id, metadata, distance) in enumerate(zip(
+                    results['documents'][0],
                     results['ids'][0],
                     results['metadatas'][0],
                     results['distances'][0]
@@ -124,6 +120,7 @@ class VectorStore:
                         continue
 
                 formatted_results.append({
+                    'content': content,
                     'chunk_id': chunk_id,
                     'source_id': metadata.get('source_id'),
                     'source_title': metadata.get('source_title'),
