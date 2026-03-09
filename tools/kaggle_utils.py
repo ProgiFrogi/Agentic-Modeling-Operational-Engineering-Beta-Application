@@ -174,13 +174,13 @@ def search_competitions(query: Optional[str] = None, max_results: int = 20,
     """
     results: List[Dict] = []
     page = 1
-    page_size = min(50, max(1, max_results))
+    page_size = min(20, max(1, max_results))
 
     try:
         while len(results) < max_results:
             comps = api.competitions_list(search=query, category=category, group=group,
                                           sort_by=sort_by, page=page, page_size=page_size)
-            if not comps:
+            if not comps.competitions:
                 break
             comps = comps.competitions
             for c in comps:
@@ -196,8 +196,6 @@ def search_competitions(query: Optional[str] = None, max_results: int = 20,
                 })
                 if len(results) >= max_results:
                     break
-            if len(comps) < page_size:
-                break
             page += 1
     except Exception as e:
         print(f"search_competitions error: {e}")
