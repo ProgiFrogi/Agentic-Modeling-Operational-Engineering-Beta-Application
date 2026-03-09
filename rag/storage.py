@@ -3,8 +3,7 @@ import json
 from enum import Enum
 from typing import List, Dict, Optional
 
-# For embeddings and vector storage
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 import chromadb
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError
@@ -23,7 +22,19 @@ class VectorStore:
         os.makedirs(persist_directory, exist_ok=True)
 
         # Initialize embedding model
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder="./models")
+        local_model_folder = './models/saved/all-MiniLM-L6-v2'
+        if os.path.exists(local_model_folder):
+            self.embedding_model = SentenceTransformer(local_model_folder, cache_folder="./models")
+        else:
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder="./models")
+            self.embedding_model.save(local_model_folder)
+        # Initialize reranker model
+        local_model_folder = './models/saved/ms-marco-MiniLM-L-6-v2'
+        if os.path.exists(local_model_folder):
+            self.reranker = CrossEncoder(local_model_folder, cache_folder="./models")
+        else:
+            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', cache_folder="./models")
+            self.reranker.save(local_model_folder)
 
         # Initialize ChromaDB
         self.chroma_client = chromadb.PersistentClient(
@@ -112,41 +123,60 @@ class VectorStore:
             where=where_filter if top_filter else None
         )
 
-        # Format results
+        # Early exit if nothing returned
+        if not results['ids'] or not results['ids'][0]:
+            return []
+
+        # Prepare candidates
+        candidates = []
+        for content, chunk_id, metadata, distance in zip(
+            results['documents'][0],
+            results['ids'][0],
+            results['metadatas'][0],
+            results['distances'][0]
+        ):
+            candidates.append({
+                'content': content,
+                'chunk_id': chunk_id,
+                'metadata': metadata,
+                'chunk_tags': json.loads(metadata.get('tags', '[]')),
+                'vector_score': 1 - distance,
+            })
+
+        if not candidates:
+            return []
+
+        # Rerank with CrossEncoder using (query, content) pairs
+        pairs = [(query, c['content']) for c in candidates]
+        rerank_scores = self.reranker.predict(pairs)
+
+        # Attach rerank scores and sort by it (desc)
+        for c, score in zip(candidates, rerank_scores):
+            c['rerank_score'] = float(score)
+
+        candidates.sort(key=lambda x: x['rerank_score'], reverse=True)
+
+        # Take top n_results and format
+        top_candidates = candidates[:n_results]
         formatted_results = []
-        if results['ids'] and results['ids'][0]:
-            for idx, (content, chunk_id, metadata, distance) in enumerate(zip(
-                    results['documents'][0],
-                    results['ids'][0],
-                    results['metadatas'][0],
-                    results['distances'][0]
-            )):
-                # Parse tags
-                chunk_tags = json.loads(metadata.get('tags', '[]'))
-
-                # Filter by tags if specified
-                if tags:
-                    if not any(tag in chunk_tags for tag in tags):
-                        continue
-
-                formatted_results.append({
-                    'content': content,
-                    'chunk_id': chunk_id,
-                    'source_id': metadata.get('source_id'),
-                    'source_title': metadata.get('source_title'),
-                    'source_url': metadata.get('source_url'),
-                    'chunk_type': metadata.get('chunk_type'),
-                    'content_type': metadata.get('content_type'),
-                    'tags': chunk_tags,
-                    'similarity_score': 1 - distance,
-                    'position': int(metadata.get('position', 0)),
-                    'metadata': {k: v for k, v in metadata.items()
-                                 if k not in ['chunk_id', 'source_id', 'source_title',
-                                              'source_url', 'chunk_type', 'content_type',
-                                              'tags', 'position']}
-                })
-
-                if len(formatted_results) >= n_results:
-                    break
+        for c in top_candidates:
+            md = c['metadata']
+            formatted_results.append({
+                'content': c['content'],
+                'chunk_id': c['chunk_id'],
+                'source_id': md.get('source_id'),
+                'source_title': md.get('source_title'),
+                'source_url': md.get('source_url'),
+                'chunk_type': md.get('chunk_type'),
+                'content_type': md.get('content_type'),
+                'tags': c['chunk_tags'],
+                'similarity_score': c['vector_score'],
+                'rerank_score': c['rerank_score'],
+                'position': int(md.get('position', 0)),
+                'metadata': {k: v for k, v in md.items()
+                             if k not in ['chunk_id', 'source_id', 'source_title',
+                                          'source_url', 'chunk_type', 'content_type',
+                                          'tags', 'position']}
+            })
 
         return formatted_results

@@ -21,7 +21,7 @@ def main():
 
     print("\nSearch demo:")
     results = pipeline.search(
-        query="tabular feature engineering with best being chosen",
+        query="Feature selection examples",
         n_results=5,
     )
     for i, r in enumerate(results, 1):
