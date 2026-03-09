@@ -11,12 +11,11 @@ def main():
 
     try:
         print("Building index from Kaggle...")
-        sources = pipeline.build_index_from_kaggle(
-            query="tabular",
-            n_competitions=100,
+        pipeline.build_index_from_kaggle(
+            query="house",
+            n_competitions=40,
             notebooks_per_comp=5,
         )
-        print(f"Indexed {len(sources)} sources from Kaggle.")
     except Exception as e:
         print(f"Kaggle indexing skipped: {e}")
 

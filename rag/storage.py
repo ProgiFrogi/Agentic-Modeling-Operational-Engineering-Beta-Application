@@ -15,8 +15,9 @@ from rag.rag_types import ContentChunk, ContentType, ChunkType
 class VectorStore:
     """Manage vector storage and retrieval of Kaggle content"""
 
-    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 3000):
+    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 3000, overload_factor: int = 3):
         self.encode_limit = encode_limit
+        self.overload_factor = overload_factor
 
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
@@ -81,6 +82,7 @@ class VectorStore:
     def search_chunks(self, query: str, content_type: Optional[ContentType] = None,
                       chunk_type: Optional[ChunkType] = None,
                       tags: Optional[List[str]] = None,
+                      tags_overlay_rule: str = '$and',
                       n_results: int = 10) -> List[Dict]:
         """
         Search for relevant chunks
@@ -90,16 +92,24 @@ class VectorStore:
 
         # Build filter
         where_filter = {}
+        top_filter = []
         if content_type:
-            where_filter["content_type"] = content_type.value
+            top_filter.append({"content_type": {"$eq": content_type.value}})
         if chunk_type:
-            where_filter["chunk_type"] = chunk_type.value
+            top_filter.append({"chunk_type":  {"$eq": chunk_type.value}})
+        if tags:
+            tags_filter = []
+            for tag in tags:
+                tags_filter.append({"tags": {"$contains": tag}})
+            top_filter.append({tags_overlay_rule: tags_filter})
+
+        where_filter["$and"] = top_filter
 
         # Search
         results = self.chunks_collection.query(
             query_embeddings=[query_embedding],
-            n_results=n_results * 2,  # Get more for filtering
-            where=where_filter if where_filter else None
+            n_results=n_results * self.overload_factor,
+            where=where_filter if top_filter else None
         )
 
         # Format results
