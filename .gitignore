@@ -1,3 +1,7 @@
 venv
 .qodo
 .idea
+.env
+rag/kaggle_notebooks
+rag/kaggle_vector_store
+rag/models
