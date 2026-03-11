@@ -107,14 +107,23 @@ class VectorStore:
         if content_type:
             top_filter.append({"content_type": {"$eq": content_type.value}})
         if chunk_type:
-            top_filter.append({"chunk_type":  {"$eq": chunk_type.value}})
+            if chunk_type == ChunkType.CODE_SNIPPET:
+                top_filter.append({"chunk_type": {"$in": [ChunkType.CODE_SNIPPET.value, ChunkType.CLASS.value, ChunkType.FUNCTION.value]}})
+            else:
+                top_filter.append({"chunk_type":  {"$eq": chunk_type.value}})
         if tags:
             tags_filter = []
             for tag in tags:
                 tags_filter.append({"tags": {"$contains": tag}})
-            top_filter.append({tags_overlay_rule: tags_filter})
+            if len(tags_filter) == 1:
+                top_filter.append(tags_filter[0])
+            else:
+                top_filter.append({tags_overlay_rule: tags_filter})
 
-        where_filter["$and"] = top_filter
+        if len(top_filter) == 1:
+            where_filter = top_filter[0]
+        else:
+            where_filter["$and"] = top_filter
 
         # Search
         results = self.chunks_collection.query(
