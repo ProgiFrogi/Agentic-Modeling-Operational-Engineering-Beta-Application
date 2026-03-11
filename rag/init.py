@@ -1,6 +1,7 @@
 from openai import OpenAI
 
 from rag.pipeline import KaggleRAGPipeline
+from rag.rag_types import ChunkType, ContentType
 
 
 # Example usage
@@ -21,8 +22,9 @@ def main():
 
     print("\nSearch demo:")
     results = pipeline.search(
-        query="Feature selection examples",
+        query="ANOVA F-value feature selection",
         n_results=5,
+        chunk_type=ChunkType.CODE_SNIPPET,
     )
     for i, r in enumerate(results, 1):
         print(f"{i}. [{r['chunk_type']}] {r['source_title']} (score={r['similarity_score']:.3f}) - {r['content']}")
