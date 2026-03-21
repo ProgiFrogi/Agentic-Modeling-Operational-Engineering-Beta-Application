@@ -6,6 +6,7 @@ from openai import OpenAI
 
 from rag.chunk_work import LangChainChunker, CodeAnalyzer, TagGenerator
 from rag.extractor import KaggleExtractor
+from rag.security import SecurityChecker
 from rag.storage import VectorStore
 from rag.rag_types import ContentType, ChunkType, ContentChunk, KaggleSource
 # Kaggle helpers
@@ -18,14 +19,15 @@ from tools.kaggle_utils import (
 class KaggleRAGPipeline:
     """Main pipeline for processing Kaggle content and building RAG system"""
 
-    def __init__(self, code_describe_llm: OpenAI, code_describe_model: str, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30):
+    def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30):
         self.min_text_length = min_chunk_length
 
         self.extractor = KaggleExtractor()
         self.chunker = LangChainChunker(chunk_size, chunk_overlap)
-        self.code_analyzer = CodeAnalyzer(code_describe_llm, code_describe_model)
+        self.code_analyzer = CodeAnalyzer()
         self.tag_generator = TagGenerator()
         self.vector_store = VectorStore()
+        self.security_checker = SecurityChecker()
 
     def process_notebook(self, notebook_source: str) -> KaggleSource:
         """
@@ -46,9 +48,9 @@ class KaggleRAGPipeline:
                 markdown_chunks = self.chunker.chunk_markdown_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(markdown_chunks):
-                    if len(chunk_data['text']) < self.min_text_length:
+                    is_secure, chunk_data['text'] = self.security_checker.check(chunk_data['text'], False)
+                    if not is_secure or len(chunk_data['text']) < self.min_text_length:
                         continue
-                    chunk_id = str(uuid.uuid4())
 
                     # Analyze text for tags
                     tags = self.tag_generator.generate_tags(
@@ -57,7 +59,7 @@ class KaggleRAGPipeline:
                     )
 
                     chunk = ContentChunk(
-                        id=chunk_id,
+                        id=str(uuid.uuid4()),
                         source_title=notebook_data['title'],
                         content_type=ContentType.NOTEBOOK,
                         chunk_type=ChunkType.MARKDOWN_CELL,
@@ -79,8 +81,11 @@ class KaggleRAGPipeline:
                 code_chunks = self.chunker.chunk_code_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(code_chunks):
-                    chunk_id = str(uuid.uuid4())
-                    analysis = self.code_analyzer.analyze_code(chunk_data['code'])
+                    is_secure, chunk_data['text'] = self.security_checker.check(chunk_data['text'], True)
+                    if not is_secure:
+                        continue
+
+                    analysis = self.code_analyzer.analyze_code(chunk_data['text'])
 
                     # Determine chunk type
                     if analysis['classes']:
@@ -90,15 +95,15 @@ class KaggleRAGPipeline:
                     else:
                         chunk_type = ChunkType.CODE_SNIPPET
 
-                    tags = self.tag_generator.generate_tags(text=analysis['description'], code=chunk_data['code'])
+                    tags = self.tag_generator.generate_tags(text=analysis['description'], code=chunk_data['text'])
 
                     chunk = ContentChunk(
-                        id=chunk_id,
+                        id=str(uuid.uuid4()),
                         source_title=notebook_data['title'],
                         chunk_type=chunk_type,
                         content_type=ContentType.NOTEBOOK,
-                        text=chunk_data['code'],
-                        code=chunk_data['code'],
+                        text=chunk_data['text'],
+                        code=chunk_data['text'],
                         code_description=analysis['description'],
                         tags=tags,
                         metadata={
@@ -120,7 +125,7 @@ class KaggleRAGPipeline:
         return source
 
     def build_index_from_kaggle(self, query: Optional[str] = None, n_competitions: int = 3,
-                                notebooks_per_comp: int = 5, discussions_per_comp: int = 5,
+                                notebooks_per_comp: int = 5,
                                 download_dir: str = "./kaggle_notebooks"):
         """
         Use Kaggle search utilities to collect competitions, then fetch notebooks and discussions

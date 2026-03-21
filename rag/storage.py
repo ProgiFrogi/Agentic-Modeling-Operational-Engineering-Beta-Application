@@ -14,31 +14,19 @@ from rag.rag_types import ContentChunk, ContentType, ChunkType
 class VectorStore:
     """Manage vector storage and retrieval of Kaggle content"""
 
-    def __init__(self, persist_directory: str = "./kaggle_vector_store", encode_limit: int = 3000, overload_factor: int = 3):
+    def __init__(self, encode_limit: int = 3000, overload_factor: int = 3):
         self.encode_limit = encode_limit
         self.overload_factor = overload_factor
 
-        self.persist_directory = persist_directory
-        os.makedirs(persist_directory, exist_ok=True)
-
         # Initialize embedding model
-        local_model_folder = './models/saved/all-MiniLM-L6-v2'
-        if os.path.exists(local_model_folder):
-            self.embedding_model = SentenceTransformer(local_model_folder, cache_folder="./models")
-        else:
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder="./models")
-            self.embedding_model.save(local_model_folder)
+        self.embedding_model = SentenceTransformer(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_LOCATION"))
         # Initialize reranker model
-        local_model_folder = './models/saved/ms-marco-MiniLM-L-6-v2'
-        if os.path.exists(local_model_folder):
-            self.reranker = CrossEncoder(local_model_folder, cache_folder="./models")
-        else:
-            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', cache_folder="./models")
-            self.reranker.save(local_model_folder)
+        self.reranker_model = CrossEncoder(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_LOCATION"))
 
         # Initialize ChromaDB
+        os.makedirs(name=os.getenv("STORAGE_LOCATION"), exist_ok=True)
         self.chroma_client = chromadb.PersistentClient(
-            path=persist_directory,
+            path=os.getenv("STORAGE_LOCATION"),
             settings=Settings(anonymized_telemetry=False)
         )
 
