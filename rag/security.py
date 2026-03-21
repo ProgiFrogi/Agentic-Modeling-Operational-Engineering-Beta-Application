@@ -15,6 +15,15 @@ class SecurityChecker:
         self.filter_emoji = filter_emoji
         self.filter_images = filter_images
 
+    def cleanup(self, text: str) -> str:
+        if self.filter_non_english:
+            text = self.__filter_non_english(text)
+        if self.filter_emoji:
+            text = self.__filter_emoji(text)
+        if self.filter_images:
+            text = self.__filter_images(text)
+        return text
+
     def check(self, text: str, is_code: bool) -> Tuple[bool, str]:
         """
         Checks text for security, returns tuple of (secure, new text)
