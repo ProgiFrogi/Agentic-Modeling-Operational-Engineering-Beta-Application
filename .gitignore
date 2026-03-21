@@ -1,7 +1,12 @@
 venv
+.venv
 .qodo
 .idea
 .env
 rag/kaggle_notebooks
 rag/kaggle_vector_store
 rag/models
+.history
+.cursor
+mws-ai-agents-2026/
+__pycache__

@@ -18,14 +18,25 @@ from tools.kaggle_utils import (
 class KaggleRAGPipeline:
     """Main pipeline for processing Kaggle content and building RAG system"""
 
-    def __init__(self, code_describe_llm: OpenAI, code_describe_model: str, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30):
+    def __init__(
+        self,
+        code_describe_llm: OpenAI,
+        code_describe_model: str,
+        chunk_size: int = 500,
+        chunk_overlap: int = 50,
+        min_chunk_length: int = 30,
+        vector_store_path: Optional[str] = None,
+        kaggle_notebooks_dir: Optional[str] = None,
+    ):
         self.min_text_length = min_chunk_length
+        self.vector_store_path = vector_store_path or "./kaggle_vector_store"
+        self.kaggle_notebooks_dir = kaggle_notebooks_dir or "./kaggle_notebooks"
 
         self.extractor = KaggleExtractor()
         self.chunker = LangChainChunker(chunk_size, chunk_overlap)
         self.code_analyzer = CodeAnalyzer(code_describe_llm, code_describe_model)
         self.tag_generator = TagGenerator()
-        self.vector_store = VectorStore()
+        self.vector_store = VectorStore(persist_directory=self.vector_store_path)
 
     def process_notebook(self, notebook_source: str) -> KaggleSource:
         """
@@ -121,11 +132,12 @@ class KaggleRAGPipeline:
 
     def build_index_from_kaggle(self, query: Optional[str] = None, n_competitions: int = 3,
                                 notebooks_per_comp: int = 5, discussions_per_comp: int = 5,
-                                download_dir: str = "./kaggle_notebooks"):
+                                download_dir: Optional[str] = None):
         """
         Use Kaggle search utilities to collect competitions, then fetch notebooks and discussions
         and process them into the vector store.
         """
+        download_dir = download_dir or self.kaggle_notebooks_dir
 
         comps = search_competitions(query=query, max_results=n_competitions)
         if not comps:
@@ -166,3 +178,32 @@ class KaggleRAGPipeline:
             tags=tags,
             n_results=n_results
         )
+
+    def build_index_for_competition(
+        self,
+        competition_ref: str,
+        notebooks_per_comp: int = 8,
+        download_dir: Optional[str] = None,
+    ) -> None:
+        """
+        Pull kernels for one competition ref (e.g. mws-ai-agents-2026) and add chunks to the vector store.
+        """
+        download_dir = download_dir or self.kaggle_notebooks_dir
+        kernels = search_kernels(
+            competition=competition_ref,
+            max_results=notebooks_per_comp,
+        )
+        for k in kernels:
+            ref = k.get("ref")
+            if not ref:
+                continue
+            nb_path = download_kernel_notebook(ref, path=download_dir)
+            if not nb_path:
+                continue
+            try:
+                src = self.process_notebook(nb_path)
+                for chunk in src.chunks:
+                    self.vector_store.add_chunk(chunk)
+            except Exception:
+                print(f"Error processing notebook {ref}:")
+                traceback.print_exc()
