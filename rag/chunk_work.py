@@ -87,10 +87,16 @@ class CodeAnalyzer:
         )
 
         try:
-            resp = self._llm_client.chat.completions.create(model=self.model_name, messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": f"Here is the code: {code} \nSummarize in up to three sentences."}
-            ], temperature=0.2, max_tokens=self.description_limit)
+            resp = self._llm_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": f"Here is the code: {code} \nSummarize in up to three sentences."}
+                ],
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                temperature=0.2,
+                max_tokens=self.description_limit
+            )
             msg = resp.choices[0].message.content.replace('<|im_start|>', '').strip()
             return msg
         except Exception:

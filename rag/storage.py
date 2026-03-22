@@ -19,9 +19,9 @@ class VectorStore:
         self.overload_factor = overload_factor
 
         # Initialize embedding model
-        self.embedding_model = SentenceTransformer(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_LOCATION"))
+        self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL"), cache_folder=os.getenv("MODELS_HUB"))
         # Initialize reranker model
-        self.reranker_model = CrossEncoder(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_LOCATION"))
+        self.reranker_model = CrossEncoder(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_HUB"))
 
         # Initialize ChromaDB
         os.makedirs(name=os.getenv("STORAGE_LOCATION"), exist_ok=True)
@@ -145,7 +145,7 @@ class VectorStore:
 
         # Rerank with CrossEncoder using (query, content) pairs
         pairs = [(query, c['content']) for c in candidates]
-        rerank_scores = self.reranker.predict(pairs)
+        rerank_scores = self.reranker_model.predict(pairs)
 
         # Attach rerank scores and sort by it (desc)
         for c, score in zip(candidates, rerank_scores):

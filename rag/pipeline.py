@@ -45,7 +45,7 @@ class KaggleRAGPipeline:
 
             if cell_type == 'markdown':
                 # Chunk markdown
-                content = self.security_checker.cleanup(content)
+                content = self.security_checker.cleanup(content, False)
                 markdown_chunks = self.chunker.chunk_markdown_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(markdown_chunks):
@@ -79,6 +79,7 @@ class KaggleRAGPipeline:
 
             elif cell_type == 'code':
                 # Chunk code
+                content = self.security_checker.cleanup(content, True)
                 code_chunks = self.chunker.chunk_code_cell(content, cell_index)
 
                 for i, chunk_data in enumerate(code_chunks):
