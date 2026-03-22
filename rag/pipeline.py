@@ -1,15 +1,13 @@
+import os
 import traceback
 import uuid
 from typing import List, Dict, Optional
-
-from openai import OpenAI
 
 from rag.chunk_work import LangChainChunker, CodeAnalyzer, TagGenerator
 from rag.extractor import KaggleExtractor
 from rag.security import SecurityChecker
 from rag.storage import VectorStore
 from rag.rag_types import ContentType, ChunkType, ContentChunk, KaggleSource
-# Kaggle helpers
 from tools.kaggle_utils import (
     search_competitions,
     search_kernels,
@@ -19,8 +17,12 @@ from tools.kaggle_utils import (
 class KaggleRAGPipeline:
     """Main pipeline for processing Kaggle content and building RAG system"""
 
-    def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30):
+    def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50, min_chunk_length: int = 30, download_dir: str = "./kaggle_notebooks"):
         self.min_text_length = min_chunk_length
+        self.processed_memory = set()
+        self.download_dir = download_dir
+        for entry in os.listdir(download_dir):
+            self.processed_memory.add(entry)
 
         self.extractor = KaggleExtractor()
         self.chunker = LangChainChunker(chunk_size, chunk_overlap)
@@ -127,8 +129,7 @@ class KaggleRAGPipeline:
         return source
 
     def build_index_from_kaggle(self, query: Optional[str] = None, n_competitions: int = 3,
-                                notebooks_per_comp: int = 5,
-                                download_dir: str = "./kaggle_notebooks"):
+                                notebooks_per_comp: int = 5):
         """
         Use Kaggle search utilities to collect competitions, then fetch notebooks and discussions
         and process them into the vector store.
@@ -148,9 +149,11 @@ class KaggleRAGPipeline:
             kernels = search_kernels(competition=comp_ref, max_results=notebooks_per_comp)
             for k in kernels:
                 ref = k.get('ref')
-                nb_path = download_kernel_notebook(ref, path=download_dir)
-                if not nb_path:
+                nb_path = download_kernel_notebook(ref, path=self.download_dir)
+                file_name = os.path.basename(nb_path)
+                if not nb_path or file_name in self.processed_memory:
                     continue
+                self.processed_memory.add(file_name)
                 try:
                     src = self.process_notebook(nb_path)
                     for chunk in src.chunks:

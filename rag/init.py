@@ -15,8 +15,18 @@ def main():
         print("Building index from Kaggle...")
         pipeline.build_index_from_kaggle(
             query="house",
-            n_competitions=1,
-            notebooks_per_comp=1,
+            n_competitions=20,
+            notebooks_per_comp=10,
+        )
+        pipeline.build_index_from_kaggle(
+            query="prediction",
+            n_competitions=20,
+            notebooks_per_comp=10,
+        )
+        pipeline.build_index_from_kaggle(
+            query="regression",
+            n_competitions=20,
+            notebooks_per_comp=10,
         )
     except Exception as e:
         print(f"Kaggle indexing skipped: {e}")
