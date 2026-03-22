@@ -25,7 +25,7 @@ def main():
         )
         pipeline.build_index_from_kaggle(
             query="regression",
-            n_competitions=20,
+            n_competitions=30,
             notebooks_per_comp=10,
         )
     except Exception as e:
