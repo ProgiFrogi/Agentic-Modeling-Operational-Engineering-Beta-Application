@@ -1,7 +1,21 @@
-venv
-.qodo
-.idea
-.env
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
 rag/kaggle_notebooks
 rag/kaggle_vector_store
 rag/models
+
+# Virtual environments
+.venv
+venv
+
+# Application specifix
+.qodo
+.idea
+
+# Secrets
+.env
