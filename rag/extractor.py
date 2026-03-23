@@ -1,7 +1,6 @@
 import os
 import nbformat
 from typing import Dict, Any, Optional
-import re
 
 class KaggleExtractor:
     """Extract content from Kaggle notebooks and discussions"""

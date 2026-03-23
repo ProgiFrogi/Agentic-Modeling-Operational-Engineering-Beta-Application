@@ -1,0 +1,1 @@
+sudo docker run --runtime nvidia --gpus all -v ${MODELS_LOCATION}:/root/.cache/huggingface --env "HF_TOKEN=$HF_TOKEN" -p ${CODER_PORT}:8000 --ipc=host vllm/vllm-openai:latest --model ${CODER_MODEL} --gpu-memory-utilization ${CODER_GPU_MEMORY_UTILIZATION}

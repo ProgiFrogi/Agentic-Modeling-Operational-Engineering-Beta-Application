@@ -1,4 +1,5 @@
 import json
+import os
 from typing import List, Dict, Optional
 from openai import OpenAI
 
@@ -17,9 +18,9 @@ from rag.rag_types import ChunkTags
 class CodeAnalyzer:
     """Analyze and describe Python code from Kaggle notebooks"""
 
-    def __init__(self, llm_client: OpenAI, model_name: str, description_limit: int = 500):
-        self._llm_client = llm_client
-        self.model_name = model_name
+    def __init__(self, description_limit: int = 500):
+        self._llm_client = OpenAI(base_url=os.getenv("CODE_DESCRIBER_URL"), api_key=os.getenv("CODE_DESCRIBER_KEY"))
+        self.model_name = os.getenv("CODE_DESCRIBER_MODEL")
         self.description_limit = description_limit
 
     def analyze_code(self, code: str) -> Dict:
@@ -86,10 +87,16 @@ class CodeAnalyzer:
         )
 
         try:
-            resp = self._llm_client.chat.completions.create(model=self.model_name, messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": f"Here is the code: {code} \nSummarize in up to three sentences."}
-            ], temperature=0.2, max_tokens=self.description_limit)
+            resp = self._llm_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": f"Here is the code: {code} \nSummarize in up to three sentences."}
+                ],
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                temperature=0.2,
+                max_tokens=self.description_limit
+            )
             msg = resp.choices[0].message.content.replace('<|im_start|>', '').strip()
             return msg
         except Exception:
@@ -123,7 +130,6 @@ class LangChainChunker:
         for i, chunk in enumerate(split_code):
             chunks.append({
                 'text': chunk,
-                'code': chunk,
                 'cell_index': cell_index,
             })
 
