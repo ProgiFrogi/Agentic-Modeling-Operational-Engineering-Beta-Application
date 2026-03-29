@@ -1,0 +1,189 @@
+2026-03-29 17:02:00,388 - INFO - ============================================================
+2026-03-29 17:02:00,388 - INFO - 🚀 Starting Kaggle Competition Agent System
+2026-03-29 17:02:00,388 - INFO - ============================================================
+2026-03-29 17:02:00,388 - INFO - Competition: mws-ai-agents-2026
+2026-03-29 17:02:00,388 - INFO - Problem type: regression
+2026-03-29 17:02:00,388 - INFO - Metric: mse
+2026-03-29 17:02:00,388 - INFO - Target column: target
+2026-03-29 17:02:00,388 - INFO - LLM Provider: ollama
+2026-03-29 17:02:00,388 - INFO - Safe mode: True
+2026-03-29 17:02:00,388 - INFO - Max iterations: 3
+2026-03-29 17:02:00,388 - INFO - 📁 Using local data from ./data directory
+2026-03-29 17:02:00,414 - INFO - Analyzing competition...
+2026-03-29 17:02:00,419 - INFO - Starting data processing phase...
+2026-03-29 17:02:04,785 - INFO - Analytic plan: Load the dataset from 'train.csv'. Check for missing values in all columns, especially in 'last_dt' and 'avg_reviews', and handle them appropriately. Convert 'last_dt' to datetime format if it's not a...
+2026-03-29 17:02:04,785 - INFO - Satisfy rate: 0.95
+2026-03-29 17:02:04,787 - INFO - Starting training phase...
+2026-03-29 17:02:23,305 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:02:38,103 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:02:38,336 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:02:38,339 - INFO - Starting training phase...
+2026-03-29 17:02:56,260 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:03:11,031 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:03:11,185 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:03:11,187 - INFO - Starting training phase...
+2026-03-29 17:03:30,233 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:03:45,040 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:03:45,189 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:03:45,192 - INFO - Starting training phase...
+2026-03-29 17:04:03,575 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:04:18,487 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:04:18,632 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:04:18,635 - INFO - Starting training phase...
+2026-03-29 17:04:37,222 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:04:52,182 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:04:52,326 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:04:52,328 - INFO - Starting training phase...
+2026-03-29 17:05:11,407 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:05:26,735 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:05:26,877 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:05:26,880 - INFO - Starting training phase...
+2026-03-29 17:05:45,482 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:06:00,339 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:06:00,483 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:06:00,485 - INFO - Starting training phase...
+2026-03-29 17:06:21,222 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:06:36,541 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:06:36,682 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:06:36,685 - INFO - Starting training phase...
+2026-03-29 17:06:55,930 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test dat...
+2026-03-29 17:07:10,962 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:07:11,101 - INFO - [Trainer] Model loaded from sessions/session_20260329_170200/model.pkl
+2026-03-29 17:07:11,104 - INFO - Starting training phase...
+2026-03-29 17:07:14,430 - INFO - 
+⚠️ Process interrupted by user

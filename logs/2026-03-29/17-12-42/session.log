@@ -1,0 +1,474 @@
+2026-03-29 17:12:42,879 - INFO - ============================================================
+2026-03-29 17:12:42,879 - INFO - 🚀 Starting Kaggle Competition Agent System
+2026-03-29 17:12:42,879 - INFO - ============================================================
+2026-03-29 17:12:42,880 - INFO - Competition: mws-ai-agents-2026
+2026-03-29 17:12:42,880 - INFO - Problem type: regression
+2026-03-29 17:12:42,880 - INFO - Metric: mse
+2026-03-29 17:12:42,880 - INFO - Target column: target
+2026-03-29 17:12:42,880 - INFO - LLM Provider: ollama
+2026-03-29 17:12:42,880 - INFO - Safe mode: True
+2026-03-29 17:12:42,880 - INFO - Max iterations: 3
+2026-03-29 17:12:42,880 - INFO - 📁 Using local data from ./data directory
+2026-03-29 17:12:42,910 - INFO - Analyzing competition...
+2026-03-29 17:12:42,915 - INFO - Starting data processing phase...
+2026-03-29 17:12:47,535 - INFO - Analytic plan: Load the dataset from 'train.csv'. Check for missing values in all columns, especially in 'last_dt' and 'avg_reviews', and handle them appropriately. Convert 'last_dt' to datetime format if it's not a...
+2026-03-29 17:12:47,535 - INFO - Satisfy rate: 0.95
+2026-03-29 17:12:47,537 - INFO - Starting training phase...
+2026-03-29 17:13:06,741 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test data shape:", test_data.shape)
+print("Test data memory usage:\n", test_data.memory_usage(deep=True))
+
+# Separate target and features
+X_train = train_data.drop('target', axis=1)
+y_train = train_data['target']
+
+# Handle missing values
+numerical_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns
+
+for col in numerical_cols:
+    median_val = X_train[col].median()
+    X_train[col] = X_train[col].fillna(median_val)
+    test_data[col] = test_data[col].fillna(median_val)
+
+for col in categorical_cols:
+    mode_val = X_train[col].mode()[0]
+    X_train[col] = X_train[col].fillna(mode_val)
+    test_data[col] = test_data[col].fillna(mode_val)
+
+# Encode categorical columns
+label_encoders = {}
+for col in categorical_cols:
+    if X_train[col].nunique() <= 50:
+        le = LabelEncoder()
+        X_train[col] = le.fit_transform(X_train[col])
+        test_data[col] = le.transform(test_data[col])
+        label_encoders[col] = le
+    else:
+        freq_encoded = X_train.groupby(col).size() / len(X_train)
+        X_train[col] = X_train[col].map(freq_encoded)
+        test_data[col] = test_data[col].map(freq_encoded.fillna(0))
+
+# Scale numerical features
+scaler = StandardScaler()
+X_train[numerical_cols] = scaler.fit_transform(X_train[numerical_cols])
+test_data[numerical_cols] = scaler.transform(test_data[numerical_cols])
+
+# Train/val split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Print shapes and memory usage after preprocessing
+print("Train features shape:", X_train.shape)
+print("Train target shape:", y_train.shape)
+print("Validation features shape:", X_val.shape)
+print("Validation target shape:", y_val.shape)
+
+# Train model
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train.ravel())
+
+# Calculate and print model score on validation set
+y_pred_val = model.predict(X_val)
+mse_val = mean_squared_error(y_val, y_pred_val)
+print("Validation MSE:", mse_val)
+
+# Save trained model to 'model.pkl'
+joblib.dump(model, 'model.pkl')
+
+# Make predictions on test data
+test_predictions = model.predict(test_data)
+
+# Save predictions to 'predictions.csv'
+submission_df = pd.DataFrame({'index': test_data.index, 'prediction': test_predictions})
+submission_df.to_csv('predictions.csv', index=False)
+
+# Print feature importance if applicable
+if hasattr(model, 'feature_importances_'):
+    importances = model.feature_importances_
+    feature_names = X_train.columns
+    feature_importance_df = pd.DataFrame({'feature': feature_names, 'importance': importances})
+    print(feature_importance_df.sort_values(by='importance', ascending=False))...
+2026-03-29 17:13:21,918 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:13:22,149 - INFO - [Trainer] Model loaded from sessions/session_20260329_171242/model.pkl
+2026-03-29 17:13:22,152 - INFO - Starting training phase...
+2026-03-29 17:13:42,947 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test data shape:", test_data.shape)
+print("Test data memory usage:\n", test_data.memory_usage(deep=True))
+
+# Separate target and features
+X_train = train_data.drop('target', axis=1)
+y_train = train_data['target']
+X_test = test_data
+
+# Handle missing values
+numerical_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns
+
+for col in numerical_cols:
+    median_val = X_train[col].median()
+    X_train[col] = X_train[col].fillna(median_val)
+    X_test[col] = X_test[col].fillna(median_val)
+
+for col in categorical_cols:
+    mode_val = X_train[col].mode()[0]
+    X_train[col] = X_train[col].fillna(mode_val)
+    X_test[col] = X_test[col].fillna(mode_val)
+
+# Encode categorical columns
+label_encoders = {}
+for col in categorical_cols:
+    if X_train[col].nunique() <= 50:
+        le = LabelEncoder()
+        X_train[col] = le.fit_transform(X_train[col])
+        X_test[col] = le.transform(X_test[col])
+        label_encoders[col] = le
+    else:
+        freq_encoded = X_train.groupby(col).size() / len(X_train)
+        X_train[col] = X_train[col].map(freq_encoded)
+        X_test[col] = X_test[col].map(freq_encoded.fillna(0))
+
+# Scale numerical features
+scaler = StandardScaler()
+X_train[numerical_cols] = scaler.fit_transform(X_train[numerical_cols])
+X_test[numerical_cols] = scaler.transform(X_test[numerical_cols])
+
+# Train/val split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Print shapes and memory usage after preprocessing
+print("Train features shape:", X_train.shape)
+print("Train target shape:", y_train.shape)
+print("Validation features shape:", X_val.shape)
+print("Validation target shape:", y_val.shape)
+
+# Train model
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train.ravel())
+
+# Predict on validation set
+y_pred_val = model.predict(X_val)
+
+# Calculate and print model score on validation set
+mse_val = mean_squared_error(y_val, y_pred_val)
+print("Validation MSE:", mse_val)
+
+# Predict on test data
+y_pred_test = model.predict(X_test)
+
+# Save predictions to 'predictions.csv'
+predictions_df = pd.DataFrame({'index': X_test.index, 'prediction': y_pred_test})
+predictions_df.to_csv('predictions.csv', index=False)
+
+# Save trained model to 'model.pkl'
+joblib.dump(model, 'model.pkl')
+
+# Print feature importance if applicable
+if hasattr(model, 'feature_importances_'):
+    importances = pd.Series(model.feature_importances_, index=X_train.columns)
+    print("Feature Importances:\n", importances.sort_values(ascending=False))...
+2026-03-29 17:13:59,038 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:13:59,182 - INFO - [Trainer] Model loaded from sessions/session_20260329_171242/model.pkl
+2026-03-29 17:13:59,185 - INFO - Starting training phase...
+2026-03-29 17:14:17,388 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test data shape:", test_data.shape)
+print("Test data memory usage:\n", test_data.memory_usage(deep=True))
+
+# Separate target and features
+X_train = train_data.drop('target', axis=1)
+y_train = train_data['target']
+X_test = test_data
+
+# Handle missing values
+numerical_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns
+
+for col in numerical_cols:
+    median_val = X_train[col].median()
+    X_train[col] = X_train[col].fillna(median_val)
+    X_test[col] = X_test[col].fillna(median_val)
+
+for col in categorical_cols:
+    mode_val = X_train[col].mode()[0]
+    X_train[col] = X_train[col].fillna(mode_val)
+    X_test[col] = X_test[col].fillna(mode_val)
+
+# Encode categorical columns
+label_encoders = {}
+for col in categorical_cols:
+    if X_train[col].nunique() <= 50:
+        le = LabelEncoder()
+        X_train[col] = le.fit_transform(X_train[col])
+        X_test[col] = le.transform(X_test[col])
+        label_encoders[col] = le
+    else:
+        freq_encoded = X_train.groupby(col).size() / len(X_train)
+        X_train[col] = X_train[col].map(freq_encoded)
+        X_test[col] = X_test[col].map(freq_encoded.fillna(0))
+
+# Scale numerical features
+scaler = StandardScaler()
+X_train[numerical_cols] = scaler.fit_transform(X_train[numerical_cols])
+X_test[numerical_cols] = scaler.transform(X_test[numerical_cols])
+
+# Train/val split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Print shapes and memory usage after preprocessing
+print("Train features shape:", X_train.shape)
+print("Train target shape:", y_train.shape)
+print("Validation features shape:", X_val.shape)
+print("Validation target shape:", y_val.shape)
+
+# Train model
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train.ravel())
+
+# Predict on validation set
+y_pred_val = model.predict(X_val)
+
+# Calculate and print model score on validation set
+mse_val = mean_squared_error(y_val, y_pred_val)
+print("Validation MSE:", mse_val)
+
+# Predict on test data
+y_pred_test = model.predict(X_test)
+
+# Save predictions to 'predictions.csv'
+predictions_df = pd.DataFrame({'index': X_test.index, 'prediction': y_pred_test})
+predictions_df.to_csv('predictions.csv', index=False)
+
+# Save trained model to 'model.pkl'
+joblib.dump(model, 'model.pkl')
+
+# Print feature importance if applicable
+if hasattr(model, 'feature_importances_'):
+    importances = pd.Series(model.feature_importances_, index=X_train.columns)
+    print("Feature Importances:\n", importances.sort_values(ascending=False))...
+2026-03-29 17:14:32,168 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:14:32,320 - INFO - [Trainer] Model loaded from sessions/session_20260329_171242/model.pkl
+2026-03-29 17:14:32,322 - INFO - Starting training phase...
+2026-03-29 17:14:50,936 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test data shape:", test_data.shape)
+print("Test data memory usage:\n", test_data.memory_usage(deep=True))
+
+# Separate target and features
+X_train = train_data.drop('target', axis=1)
+y_train = train_data['target']
+X_test = test_data
+
+# Handle missing values
+numerical_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns
+
+for col in numerical_cols:
+    median_val = X_train[col].median()
+    X_train[col] = X_train[col].fillna(median_val)
+    X_test[col] = X_test[col].fillna(median_val)
+
+for col in categorical_cols:
+    mode_val = X_train[col].mode()[0]
+    X_train[col] = X_train[col].fillna(mode_val)
+    X_test[col] = X_test[col].fillna(mode_val)
+
+# Encode categorical columns
+label_encoders = {}
+for col in categorical_cols:
+    if X_train[col].nunique() <= 50:
+        le = LabelEncoder()
+        X_train[col] = le.fit_transform(X_train[col])
+        X_test[col] = le.transform(X_test[col])
+        label_encoders[col] = le
+    else:
+        freq_encoded = X_train.groupby(col).size() / len(X_train)
+        X_train[col] = X_train[col].map(freq_encoded)
+        X_test[col] = X_test[col].map(freq_encoded.fillna(0))
+
+# Scale numerical features
+scaler = StandardScaler()
+X_train[numerical_cols] = scaler.fit_transform(X_train[numerical_cols])
+X_test[numerical_cols] = scaler.transform(X_test[numerical_cols])
+
+# Train/val split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Print shapes and memory usage after preprocessing
+print("Train features shape:", X_train.shape)
+print("Train target shape:", y_train.shape)
+print("Validation features shape:", X_val.shape)
+print("Validation target shape:", y_val.shape)
+
+# Train model
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train.ravel())
+
+# Predict on validation set
+y_pred_val = model.predict(X_val)
+
+# Calculate and print model score on validation set
+mse_val = mean_squared_error(y_val, y_pred_val)
+print("Validation MSE:", mse_val)
+
+# Predict on test data
+y_pred_test = model.predict(X_test)
+
+# Save predictions to 'predictions.csv'
+predictions_df = pd.DataFrame({'index': X_test.index, 'prediction': y_pred_test})
+predictions_df.to_csv('predictions.csv', index=False)
+
+# Save trained model to 'model.pkl'
+joblib.dump(model, 'model.pkl')
+
+# Print feature importance if applicable
+if hasattr(model, 'feature_importances_'):
+    importances = pd.Series(model.feature_importances_, index=X_train.columns)
+    print("Feature Importances:\n", importances.sort_values(ascending=False))...
+2026-03-29 17:15:06,218 - INFO - [Coder] Code executed successfully! Results in execution_results/_Write Python code to train a model on the data.__
+2026-03-29 17:15:06,366 - INFO - [Trainer] Model loaded from sessions/session_20260329_171242/model.pkl
+2026-03-29 17:15:06,369 - INFO - Starting training phase...
+2026-03-29 17:15:24,799 - INFO - [Coder] Generated code:
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
+import joblib
+
+# Load data
+train_data = pd.read_csv('train.csv')
+test_data = pd.read_csv('test.csv')
+
+# Print shapes and memory usage
+print("Train data shape:", train_data.shape)
+print("Train data memory usage:\n", train_data.memory_usage(deep=True))
+print("Test data shape:", test_data.shape)
+print("Test data memory usage:\n", test_data.memory_usage(deep=True))
+
+# Separate target and features
+X_train = train_data.drop('target', axis=1)
+y_train = train_data['target']
+X_test = test_data
+
+# Handle missing values
+numerical_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns
+
+for col in numerical_cols:
+    median_val = X_train[col].median()
+    X_train[col] = X_train[col].fillna(median_val)
+    X_test[col] = X_test[col].fillna(median_val)
+
+for col in categorical_cols:
+    mode_val = X_train[col].mode()[0]
+    X_train[col] = X_train[col].fillna(mode_val)
+    X_test[col] = X_test[col].fillna(mode_val)
+
+# Encode categorical columns
+label_encoders = {}
+for col in categorical_cols:
+    if X_train[col].nunique() <= 50:
+        le = LabelEncoder()
+        X_train[col] = le.fit_transform(X_train[col])
+        X_test[col] = le.transform(X_test[col])
+        label_encoders[col] = le
+    else:
+        freq_encoded = X_train.groupby(col).size() / len(X_train)
+        X_train[col] = X_train[col].map(freq_encoded)
+        X_test[col] = X_test[col].map(freq_encoded.fillna(0))
+
+# Scale numerical features
+scaler = StandardScaler()
+X_train[numerical_cols] = scaler.fit_transform(X_train[numerical_cols])
+X_test[numerical_cols] = scaler.transform(X_test[numerical_cols])
+
+# Train/val split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Print shapes and memory usage after preprocessing
+print("Train features shape:", X_train.shape)
+print("Train target shape:", y_train.shape)
+print("Validation features shape:", X_val.shape)
+print("Validation target shape:", y_val.shape)
+
+# Train model
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train.ravel())
+
+# Predict on validation set
+y_pred_val = model.predict(X_val)
+
+# Calculate and print model score on validation set
+mse_val = mean_squared_error(y_val, y_pred_val)
+print("Validation MSE:", mse_val)
+
+# Predict on test data
+y_pred_test = model.predict(X_test)
+
+# Save predictions to 'predictions.csv'
+predictions_df = pd.DataFrame({'index': X_test.index, 'prediction': y_pred_test})
+predictions_df.to_csv('predictions.csv', index=False)
+
+# Save trained model to 'model.pkl'
+joblib.dump(model, 'model.pkl')
+
+# Print feature importance if applicable
+if hasattr(model, 'feature_importances_'):
+    importances = pd.Series(model.feature_importances_, index=X_train.columns)
+    print("Feature Importances:\n", importances.sort_values(ascending=False))...
+2026-03-29 17:15:37,842 - INFO - 
+⚠️ Process interrupted by user

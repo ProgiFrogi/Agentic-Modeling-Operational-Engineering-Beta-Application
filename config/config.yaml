@@ -1,0 +1,61 @@
+# config/config.yaml
+model:
+  provider: "ollama"  # ollama, openrouter
+  ollama:
+    model: "qwen2.5-coder:14b-instruct-q4_K_M"
+    base_url: "http://localhost:11434"
+    temperature: 0
+  openrouter:
+    model: "qwen/qwen-2.5-coder-32b-instruct:free"
+    api_key: "${OPENROUTER_API_KEY}"
+    base_url: "https://openrouter.ai/api/v1"
+    temperature: 0
+
+competition:
+  name: "mws-ai-agents-2026"
+  target_column: "target"
+  metric: "mse"
+  problem_type: "regression"  # regression, binary_classification, multiclass
+
+  # Файлы
+  files:
+    train: "train.csv"
+    test: "test.csv"
+    sample_submission: "sample_submission.csv"
+    competition_info: "competition_info.txt"
+
+  # Опции загрузки
+  download_data: false  # true - скачать с Kaggle, false - использовать локальные файлы
+  download_path: "./data"
+
+pipeline:
+  max_iterations: 3
+  max_attempts_per_agent: 3
+  execution_timeout: 60  # seconds
+  safe_mode: true
+
+  # Пути
+  data_dir: "./data"
+  sessions_dir: "./sessions"
+  logs_dir: "./logs"
+  models_dir: "./models"
+  benchmarks_dir: "./benchmarks"
+
+guardrails:
+  enable_input_validation: true
+  enable_code_safety: true
+  forbidden_imports:
+    - "os.system"
+    - "subprocess"
+    - "eval"
+    - "exec"
+    - "__import__"
+  allowed_modules:
+    - "pandas"
+    - "numpy"
+    - "sklearn"
+    - "xgboost"
+    - "lightgbm"
+    - "catboost"
+    - "matplotlib"
+    - "seaborn"

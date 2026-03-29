@@ -7,6 +7,8 @@ from typing import Dict, Any, TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
+
+from utils import extract_json_from_response
 from utils import logger
 from utils.session_manager import SessionManager
 import pickle
