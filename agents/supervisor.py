@@ -1,4 +1,3 @@
-# agents/supervisor.py (полностью исправленный)
 """Supervisor agent - orchestrates all other agents"""
 
 import json
@@ -9,9 +8,8 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 
 from utils import logger, SessionManager
-from utils.benchmark import Benchmark, MetricsCalculator
+from utils.benchmark import Benchmark
 from config import get_config
-from agents.prompts import SUPERVISOR_PLAN_PROMPT, SUPERVISOR_ANALYSIS_PROMPT
 from agents.data_worker import run_data_worker
 from agents.trainer import run_trainer
 from agents.validator import run_validator

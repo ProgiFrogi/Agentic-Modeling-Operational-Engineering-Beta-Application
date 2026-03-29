@@ -1,4 +1,3 @@
-# prompts/coder_prompts.py
 INITIAL_CODE_PROMPT = """
 Write Python code for the following task:
 {task}

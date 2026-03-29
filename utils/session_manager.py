@@ -1,6 +1,4 @@
-# utils/session_manager.py (добавляем метод save_metadata)
 import shutil
-import os
 import json
 from pathlib import Path
 from datetime import datetime

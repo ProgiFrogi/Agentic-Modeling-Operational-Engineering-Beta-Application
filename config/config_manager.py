@@ -1,7 +1,7 @@
 import os
 import yaml
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -108,9 +108,6 @@ class ConfigManager:
         if config_path and Path(config_path).exists():
             self._load_from_yaml(config_path)
 
-        # Применяем переменные окружения
-        self._apply_env_overrides()
-
     def _load_from_yaml(self, path: str):
         """Загружает конфигурацию из YAML файла"""
         with open(path, 'r', encoding='utf-8') as f:
@@ -147,23 +144,9 @@ class ConfigManager:
                 if hasattr(self.guardrails, key):
                     setattr(self.guardrails, key, value)
 
-    def _apply_env_overrides(self):
-        """Применяет переменные окружения для переопределения конфигурации"""
-        if os.getenv("LLM_PROVIDER"):
-            self.model.provider = os.getenv("LLM_PROVIDER")
-        if os.getenv("COMPETITION_NAME"):
-            self.competition.name = os.getenv("COMPETITION_NAME")
-        if os.getenv("DOWNLOAD_DATA") is not None:
-            self.competition.download_data = os.getenv("DOWNLOAD_DATA", "").lower() == "true"
-
     def get_llm(self):
         """Возвращает настроенную LLM"""
         return self.model.get_llm()
-
-    @classmethod
-    def from_file(cls, config_path: str) -> "ConfigManager":
-        """Создает конфигурацию из файла"""
-        return cls(config_path)
 
 
 # Глобальный экземпляр

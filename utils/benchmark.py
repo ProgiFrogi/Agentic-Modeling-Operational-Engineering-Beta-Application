@@ -1,4 +1,3 @@
-# utils/benchmark.py
 """Benchmarking utilities for model comparison"""
 
 import json

@@ -1,9 +1,6 @@
-# utils/data_downloader.py
 """Data downloader for Kaggle competitions"""
 
-import os
 from pathlib import Path
-from typing import Optional
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 
@@ -38,29 +35,3 @@ class KaggleDataDownloader:
         except Exception as e:
             print(f"❌ Failed to download data: {e}")
             return False
-
-    def download_sample_submission(self, competition_name: str, output_path: Optional[str] = None) -> Optional[str]:
-        """Скачивает sample submission файл"""
-        try:
-            files = self.api.competition_list_files(competition_name)
-
-            for file in files:
-                if "sample" in file.name.lower() and "submission" in file.name.lower():
-                    output_file = output_path or file.name
-                    self.api.competition_download_file(competition_name, file.name, path='.')
-
-                    import zipfile
-                    if Path(file.name).suffix == '.zip':
-                        with zipfile.ZipFile(file.name, 'r') as zf:
-                            zf.extractall('.')
-                        Path(file.name).unlink()
-
-                    print(f"✅ Downloaded sample submission to {output_file}")
-                    return output_file
-
-            print(f"❌ Sample submission not found for {competition_name}")
-            return None
-
-        except Exception as e:
-            print(f"❌ Failed to download sample submission: {e}")
-            return None
