@@ -3,13 +3,13 @@
 import json
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, TypedDict, List, Optional
+from typing import Dict, Any, TypedDict, List
 from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
-from utils import logger
+
+from utils import extract_json_from_response
 from utils.session_manager import SessionManager
-import pickle
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
