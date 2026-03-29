@@ -16,6 +16,7 @@ def extract_code(text: str) -> str:
         text = text.strip()
     return text
 
+
 def check_syntax(state: TypedDict) -> Dict[str, Any]:
     code = state.get("current_code")
     if not code:
@@ -28,7 +29,7 @@ def check_syntax(state: TypedDict) -> Dict[str, Any]:
 
 
 def execute_with_saving(code: str, data_dir: str | None = None,
-                        output_dir: str | None = None) -> Tuple[bool, str, Optional[str]]:
+                        output_dir: str | None = None, timeout: int = 30) -> Tuple[bool, str, Optional[str]]:
     """
     Execute Python code and save execution results.
 
@@ -99,7 +100,7 @@ print(f"Files in current directory: {{os.listdir('.')[:10]}}")  # Show first 10 
             [sys.executable, temp_file_path],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
             cwd=working_dir  # This sets the working directory for the subprocess
         )
 
