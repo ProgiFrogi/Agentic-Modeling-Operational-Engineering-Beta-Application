@@ -25,12 +25,16 @@ If you dont sure in data, dont work with it or want modify df, rate < 0.9
 Your previous attempts and responses from worker:
 {history}
 
+Dont add any graphics, its useless: you haven't eyes, only output
+
 Name of file:
 {name_of_file}
 Really important provide name of file to coder!
+
 Give response in json with fields:
 - data_planner_request: str with commands for data_worker
 - satisfy_rate: float
+Dont add ```json in begin and ``` in end
 """
 
 

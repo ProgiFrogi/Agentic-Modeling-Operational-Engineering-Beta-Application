@@ -1,7 +1,10 @@
 import os
 import subprocess
 import ast
-from typing import Dict, Any, TypedDict, Optional
+import sys
+import tempfile
+from pathlib import Path
+from typing import Dict, Any, TypedDict, Optional, Tuple
 
 
 def extract_code(text: str) -> str:
@@ -13,150 +16,6 @@ def extract_code(text: str) -> str:
         text = text.strip()
     return text
 
-
-def clean_code(code: str) -> str:
-    """Очищает и исправляет распространённые синтаксические ошибки в сгенерированном коде"""
-    import re
-
-    # 1. Удаляем все разрывы строк внутри слов (например, "as p\nd" -> "as pd")
-    code = re.sub(r'(\w+)\n(\w+)', r'\1\2', code)
-    code = re.sub(r'(\w+)\n\s*(\w+)', r'\1\2', code)
-
-    # 2. Исправляем слитые импорты
-    code = re.sub(r'import\s+(\w+)\s+as\s+(\w+)(?=[a-zA-Z])', r'import \1 as \2\n', code)
-    code = re.sub(r'import(\w+)', r'import \1', code)
-    code = re.sub(r'from\s+(\w+)\s+import\s+(\w+)', r'from \1 import \2', code)
-
-    # 3. Исправляем слитые слова
-    code = re.sub(r'numpyas\s+', 'numpy as ', code)
-    code = re.sub(r'pandasaspd', 'pandas as pd', code)
-    code = re.sub(r'pandasas\s+pd', 'pandas as pd', code)
-    code = re.sub(r'pandas\s+aspd', 'pandas as pd', code)
-    code = re.sub(r'seabornas\s+sns', 'seaborn as sns', code)
-    code = re.sub(r'matplotlib\.pyplotas\s+plt', 'matplotlib.pyplot as plt', code)
-    code = re.sub(r'impor\s+t', 'import', code)
-    code = re.sub(r'as\s+p\s*d', 'as pd', code)
-    code = re.sub(r'as\s+n\s*p', 'as np', code)
-    code = re.sub(r'as\s+s\s*n\s*s', 'as sns', code)
-    code = re.sub(r'as\s+p\s*l\s*t', 'as plt', code)
-
-    # 4. Добавляем пробелы после запятых
-    code = re.sub(r',(?=[^\s])', ', ', code)
-
-    # 5. Исправляем комментарии, слитые с кодом
-    code = re.sub(r'#([^\s])', r'# \1', code)
-
-    # 6. Разделяем слитые строки
-    lines = code.split('\n')
-    cleaned_lines = []
-    for line in lines:
-        # Если строка не пустая и не комментарий
-        if line.strip() and not line.strip().startswith('#'):
-            # Проверяем на наличие нескольких операторов
-            if '=' in line and any(op in line for op in ['for', 'if', 'while']):
-                # Оставляем как есть
-                cleaned_lines.append(line)
-            elif line.count('=') > 1 and '=' not in line.split('#')[0].split(',')[0]:
-                # Разделяем по =, но осторожно
-                parts = re.split(r'(?<=[^=])\s+(?=\w+\s*=)', line)
-                if len(parts) > 1:
-                    cleaned_lines.extend(parts)
-                else:
-                    cleaned_lines.append(line)
-            else:
-                cleaned_lines.append(line)
-        else:
-            cleaned_lines.append(line)
-    code = '\n'.join(cleaned_lines)
-
-    # 7. Исправляем отступы после двоеточия
-    lines = code.split('\n')
-    cleaned_lines = []
-    indent_level = 0
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            cleaned_lines.append('')
-            continue
-
-        # Уменьшаем отступ для except, finally, elif, else
-        if stripped.startswith('except') or stripped.startswith('finally') or \
-                stripped.startswith('elif') or stripped.startswith('else'):
-            indent_level = max(0, indent_level - 1)
-
-        # Добавляем строку с правильным отступом
-        cleaned_lines.append('    ' * indent_level + stripped)
-
-        # Увеличиваем отступ после блоков
-        if stripped.endswith(':') and not stripped.startswith('#'):
-            indent_level += 1
-
-    code = '\n'.join(cleaned_lines)
-
-    # 8. Удаляем лишние пустые строки
-    code = re.sub(r'\n\s*\n\s*\n', '\n\n', code)
-
-    # 9. Заменяем path_to_file.csv на train.csv
-    code = re.sub(r'path_to_file\.csv', 'train.csv', code)
-    code = re.sub(r"'path_to_file\.csv'", "'train.csv'", code)
-    code = re.sub(r'"path_to_file\.csv"', '"train.csv"', code)
-
-    return code
-
-
-def execute_in_docker(code: str, timeout: int = 60, data_dir: Optional[str] = None) -> tuple[bool, str]:
-    """Выполняет Python код в Docker-контейнере через -c с автоматической установкой библиотек"""
-    if not code.strip():
-        return False, "Code empty"
-
-    # Проверяем, существует ли кастомный образ с предустановленными библиотеками
-    try:
-        subprocess.run(["docker", "image", "inspect", "python-ml:3.10-slim"],
-                       capture_output=True, check=True)
-        image = "python-ml:3.10-slim"
-        full_code = code
-    except subprocess.CalledProcessError:
-        # Используем стандартный образ и устанавливаем библиотеки на лету
-        image = "python:3.10-slim"
-        setup_code = '''
-import subprocess, sys, importlib
-
-def install(pkg):
-    try:
-        importlib.import_module(pkg)
-        return
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", pkg])
-
-for pkg in ['pandas', 'numpy', 'matplotlib', 'seaborn', 'scikit-learn']:
-    install(pkg)
-'''
-        full_code = setup_code + code
-
-    # Формируем команду Docker
-    cmd = ["docker", "run", "--rm"]
-
-    # Если указана директория с данными, монтируем её в /data
-    if data_dir and os.path.exists(data_dir):
-        abs_data_dir = os.path.abspath(data_dir)
-        cmd.extend(["-v", f"{abs_data_dir}:/data", "-w", "/data"])
-
-    cmd.extend([image, "python", "-c", full_code])
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        if result.returncode == 0:
-            return True, result.stdout or "No output"
-        else:
-            return False, result.stderr or result.stdout
-    except subprocess.TimeoutExpired:
-        return False, f"Execution timed out after {timeout} seconds"
-    except FileNotFoundError:
-        return False, "Docker not found. Please install Docker."
-    except Exception as e:
-        return False, f"Docker error: {str(e)}"
-
-
 def check_syntax(state: TypedDict) -> Dict[str, Any]:
     code = state.get("current_code")
     if not code:
@@ -167,3 +26,124 @@ def check_syntax(state: TypedDict) -> Dict[str, Any]:
     except SyntaxError as e:
         return {"syntax_error": f"Syntax error: {e.msg} at line {e.lineno}"}
 
+
+def execute_with_saving(code: str, data_dir: str | None = None,
+                        output_dir: str | None = None) -> Tuple[bool, str, Optional[str]]:
+    """
+    Execute Python code and save execution results.
+
+    Args:
+        code: Python code to execute
+        data_dir: Directory with data files
+        output_dir: Directory to save execution results. If None, creates a timestamped folder
+
+    Returns:
+        Tuple[bool, str, Optional[str]]: (success, output/error, result_file_path)
+    """
+    from datetime import datetime
+    import json
+
+    # Create output directory if specified
+    if output_dir:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+    else:
+        # Create a timestamped directory in the current location
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = Path(f"execution_results_{timestamp}")
+        output_path.mkdir(parents=True, exist_ok=True)
+
+    # Determine working directory for subprocess
+    working_dir = None
+    if data_dir:
+        data_dir_path = Path(data_dir)
+        if data_dir_path.exists():
+            working_dir = str(data_dir_path)
+        else:
+            return False, f"Data directory not found: {data_dir}", None
+
+    # Prepare code without adding os.chdir
+    # Instead, we'll rely on the subprocess cwd parameter
+    code_to_execute = f"""
+import os
+import sys
+import json
+from pathlib import Path
+
+# Add output directory to path for saving results
+output_dir = r'{str(output_path)}'
+os.makedirs(output_dir, exist_ok=True)
+
+# Add data directory to sys.path if needed
+data_dir = r'{data_dir}' if {data_dir is not None} else None
+if data_dir and os.path.exists(data_dir):
+    sys.path.insert(0, data_dir)
+    print(f"Data directory available: {{data_dir}}")
+
+# Print current working directory for debugging
+print(f"Current working directory: {{os.getcwd()}}")
+print(f"Files in current directory: {{os.listdir('.')[:10]}}")  # Show first 10 files
+
+# Original code
+{code}
+"""
+
+    # Create temporary file for execution
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        temp_file_path = f.name
+        f.write(code_to_execute)
+
+    try:
+        # Execute the code with working directory set
+        result = subprocess.run(
+            [sys.executable, temp_file_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=working_dir  # This sets the working directory for the subprocess
+        )
+
+        # Save execution info
+        execution_info = {
+            "timestamp": datetime.now().isoformat(),
+            "success": result.returncode == 0,
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "code": code,
+            "data_dir": data_dir,
+            "output_dir": str(output_path),
+            "working_dir": working_dir
+        }
+
+        # Save execution info to JSON file
+        info_file = output_path / "execution_info.json"
+        with open(info_file, 'w') as f:
+            json.dump(execution_info, f, indent=2)
+
+        # Save code separately
+        code_file = output_path / "executed_code.py"
+        with open(code_file, 'w') as f:
+            f.write(code)
+
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if not output:
+                output = f"Code executed successfully. Results saved to {output_path}"
+            return True, output, str(output_path)
+        else:
+            error_msg = result.stderr.strip()
+            if not error_msg:
+                error_msg = f"Execution failed with return code {result.returncode}"
+            return False, error_msg, str(output_path)
+
+    except subprocess.TimeoutExpired:
+        return False, "Execution timeout (30 seconds)", None
+    except Exception as e:
+        return False, f"Execution error: {str(e)}", None
+    finally:
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except:
+            pass

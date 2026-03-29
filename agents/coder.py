@@ -2,11 +2,13 @@
 
 
 import os
+import re
 from typing import Dict, Any, TypedDict, Optional
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
-from tools import extract_code, execute_in_docker, check_syntax, clean_code
+from tools import extract_code, check_syntax
+from tools import execute_with_saving as execute
 from dotenv import load_dotenv
 from utils import logger
 
@@ -24,11 +26,9 @@ class CodingAgentState(TypedDict):
     final_code: Optional[str]
     data_dir: Optional[str]
 
-llm = ChatOpenAI(
-    model="arcee-ai/trinity-large-preview:free",
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+llm = ChatOllama(
+    model="qwen2.5-coder:14b-instruct-q4_K_M",
     temperature=0,
-    openai_api_base="https://openrouter.ai/api/v1",
 )
 
 
@@ -40,13 +40,39 @@ def generate_initial_code(state: CodingAgentState) -> Dict[str, Any]:
     - Put each statement on a new line
     - Use proper indentation (4 spaces per level)
     - Ensure the code runs without errors and outputs meaningful results.
+    - If using sklearn, use sparse_output=False instead of sparse=False for OneHotEncoder (newer sklearn versions)
+    - Use .ravel() when assigning imputed values to avoid dimension issues
+    - Don't use matplotlib or seaborn for visualizations
+    
+    1. Memory efficiency is KEY - work with large datasets (36k rows, 15 columns)
+    2. DO NOT create explosion of features - avoid OneHotEncoder on high-cardinality columns
+    3. For columns with > 50 unique values, use:
+       - Label Encoding, or
+       - Frequency encoding, or
+       - Keep as-is (if meaningful for model like text)
+    4. Always print shapes and memory usage after operations
+    5. Handle missing values simply:
+       - Numerical: fill with median/mean
+       - Categorical: fill with "Unknown" or mode
+    6. For datetime: extract useful features (year, month, day, dayofweek)
+    7. Use StandardScaler for numerical features
+    8. Save processed files with .to_csv(index=False)
+    9. Print progress messages
+    10. **TEST DATA DOES NOT HAVE 'target' COLUMN** - This is the most important rule!
+       - Always exclude 'target' from numerical_cols when processing test data
+       - Use: numerical_cols_train = [c for c in numerical_cols if c != 'target']
+       - For test: use the same columns as train WITHOUT 'target'
+    REMEMBER - in test.csv not 'target'
     Output only the code, no explanations.
     """
     response = llm.invoke([HumanMessage(content=prompt)])
     code = extract_code(response.content)
-    code = clean_code(code)
     logger.info(f"Coder Request: {prompt}")
     logger.info(f"Coder Response: {code}")
+    if not state['task'] or (state['task'] == "" and state.get("done", False)):
+        logger.info("[Wrapper] No task or already done, skipping coder")
+        return {"done": True}
+
     return {
         "current_code": code,
         "attempts": 1,
@@ -60,9 +86,14 @@ def generate_initial_code(state: CodingAgentState) -> Dict[str, Any]:
 def execute_code(state: CodingAgentState) -> Dict[str, Any]:
     code = state["current_code"]
     data_dir = state.get("data_dir", None)
-    success, output = execute_in_docker(code, data_dir=data_dir)
+    task_name = re.sub(r'[^\w\-_\. ]', '_', state['task'][:50])
+    output_dir = f"execution_results/{task_name}"
+    success, output, result_dir = execute(code, data_dir=data_dir, output_dir=output_dir)
+
+
+
     if success:
-        logger.info(f"Code executed successfully!")
+        logger.info(f"Code executed successfully! Results saved to {result_dir}")
         return {
             "execution_output": output,
             "execution_error": None,
@@ -86,7 +117,6 @@ Please provide correct code. Output only the code, no explanations.
 """
     response = llm.invoke([HumanMessage(content=prompt)])
     new_code = extract_code(response.content)
-    new_code = clean_code(new_code)
     logger.info(f"Coder Request: {prompt}")
     logger.info(f"Coder Response: {new_code}")
     return {
@@ -114,7 +144,6 @@ def after_execute(state: CodingAgentState) -> str:
         return "fail"
 
 def run_coder(task: str, max_attempts: int = 3, data_dir: str | None = None) -> Dict[str, Any]:
-    # Строим граф
     graph = StateGraph(CodingAgentState)
     graph.add_node("generate", generate_initial_code)
     graph.add_node("check_syntax", check_syntax)
