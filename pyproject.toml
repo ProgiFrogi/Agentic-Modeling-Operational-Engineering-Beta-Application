@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Автономная мультиагентная система для соревнований Kaggle на LangGraph и MCP"
 readme = "README.md"
 authors = [{ name = "Your Name", email = "your.email@example.com" }]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "langgraph>=0.0.52",
@@ -16,6 +16,7 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
     "httpx>=0.25.0",  # Для MCP-клиента
     "websockets>=12.0",  # Для MCP-клиента
     "langchain-huggingface>=1.2.0",
@@ -23,6 +24,8 @@ dependencies = [
     "torch>=2.10.0",
     "accelerate>=1.12.0",
     "mcp>=1.26.0",
+    "langchain_ollama",
+    "kaggle",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +41,10 @@ dev = [
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agents*", "config*", "tools*", "utils*"]
 
 [tool.black]
 line-length = 100

@@ -43,9 +43,12 @@ class TrainerAgent:
         self.config = get_config()
         self.llm = self.config.get_llm()
 
-    def _extract_score_from_output(self, output: str, metric: str) -> Optional[float]:
+    def _extract_score_from_output(self, output: Optional[str], metric: str) -> Optional[float]:
         """Извлекает значение метрики из вывода кода"""
         import re
+
+        if not output:
+            return None
 
         # Ищем паттерны типа "MSE: 0.123" или "Validation MSE: 0.123"
         patterns = [
@@ -138,7 +141,14 @@ class TrainerAgent:
             logger.error(f"[Trainer] Failed to calculate scores: {e}")
             return {}
 
-    def run(self, session: SessionManager, max_attempts: int = 3) -> Dict[str, Any]:
+    def run(
+        self,
+        session: SessionManager,
+        max_attempts: int = 3,
+        training_iteration: int = 0,
+        improvement_context: str = "",
+        previous_scores: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """Запускает агента-тренера"""
 
         target_column = self.config.competition.target_column
@@ -161,6 +171,19 @@ class TrainerAgent:
         - After training, save scores to 'scores.json' file
         """
 
+        if training_iteration > 0:
+            prev = json.dumps(previous_scores or {}, indent=2)
+            plan = improvement_context.strip() or "(no structured plan — still change model/features vs previous iteration)"
+            extra_rules += f"""
+
+        REFINEMENT — training iteration {training_iteration} (not the first run):
+        - Previous scores on the last attempt: {prev}
+        - Supervisor improvement plan (follow concretely; do not repeat the same pipeline as iteration 0):
+        {plan}
+        - You must materially change the approach: different model family and/or features and/or preprocessing
+          if the plan suggests it; do not output near-duplicate code to a naive baseline.
+        """
+
         result = run_coder(
             code_prompt,
             max_attempts=max_attempts,
@@ -168,8 +191,8 @@ class TrainerAgent:
             extra_rules=extra_rules
         )
 
-        # Извлекаем score из вывода
-        execution_output = result.get("execution_output", "")
+        # Извлекаем score из вывода (при падении кодера может быть None)
+        execution_output = result.get("execution_output") or ""
         extracted_score = self._extract_score_from_output(execution_output, metric)
 
         # Рассчитываем scores из предсказаний
@@ -187,6 +210,12 @@ class TrainerAgent:
                 "attempts": result.get("attempts", 0)
             })
 
+        final_code = result.get("final_code") or result.get("current_code", "")
+        if final_code and result.get("execution_error") is None:
+            code_path = session.session_dir / "training_code.py"
+            code_path.write_text(final_code, encoding="utf-8")
+            logger.info(f"[Trainer] Saved training script to {code_path}")
+
         print("=" * 50)
         print("Training Results:")
         print(f"Scores: {scores}")
@@ -202,6 +231,18 @@ class TrainerAgent:
         }
 
 
-def run_trainer(session: SessionManager, max_attempts: int = 3) -> Dict[str, Any]:
+def run_trainer(
+    session: SessionManager,
+    max_attempts: int = 3,
+    training_iteration: int = 0,
+    improvement_context: str = "",
+    previous_scores: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     agent = TrainerAgent()
-    return agent.run(session, max_attempts)
+    return agent.run(
+        session,
+        max_attempts,
+        training_iteration=training_iteration,
+        improvement_context=improvement_context,
+        previous_scores=previous_scores,
+    )

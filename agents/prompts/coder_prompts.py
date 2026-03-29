@@ -10,7 +10,7 @@ Important guidelines:
 4. Use proper indentation (4 spaces per level)
 5. Ensure the code runs without errors
 6. If using sklearn OneHotEncoder, use sparse_output=False
-7. Use .ravel() when assigning imputed values
+7. For pandas Series targets after train_test_split use y_train.to_numpy().ravel() or np.asarray(y_train).ravel() — not y_train.ravel() (pandas 3+)
 8. Don't use matplotlib or seaborn for visualizations
 
 Memory efficiency for large datasets:
@@ -66,12 +66,13 @@ Requirements:
 Rules:
 - Use memory-efficient code
 - Use pandas fillna() for missing values
-- For categorical columns with >50 unique values, use frequency encoding
-- For categorical columns with <=50 unique values, use LabelEncoder
-- Scale numerical features with StandardScaler
-- Use train/val split (80/20)
+- Detect columns as: numeric_cols = X.select_dtypes(include=[np.number]).columns; then encode every other column (object, pandas StringDtype, category) — do not rely only on select_dtypes(include=['object'])
+- For high-cardinality text (>50 unique values), use frequency encoding; for low cardinality use LabelEncoder
+- Only after ALL features are numeric, apply StandardScaler to numeric_cols (or use ColumnTransformer)
+- Use train/val split (80/20); for model.fit pass y as np.asarray(y_train).ravel() or y_train.to_numpy().ravel()
+- Prefer sklearn models (RandomForestRegressor, HistGradientBoostingRegressor) so code runs without extra pip packages; use xgboost/lightgbm only if you know they are installed
 - Save model with joblib.dump
-- Print all metrics
+- Print all metrics (include a line like "Validation mse: <number>" using the configured metric name)
 - Save predictions with format: 'index,prediction'
 
 Output ONLY the Python code, no explanations.

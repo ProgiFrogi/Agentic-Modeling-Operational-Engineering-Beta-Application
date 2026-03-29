@@ -116,6 +116,28 @@ class SupervisorAgent:
             "errors": []
         }
 
+    def _refinement_context_for_train(
+        self, state: SupervisorState
+    ) -> tuple[Optional[Dict[str, float]], str]:
+        """Метрики прошлого обучения и JSON плана улучшения для следующего вызова кодера."""
+        if state["iterations"] <= 0:
+            return None, ""
+
+        previous_scores: Optional[Dict[str, float]] = None
+        for h in reversed(state["history"]):
+            if h["phase"] == "training":
+                previous_scores = (h.get("result") or {}).get("scores")
+                break
+
+        improvement_blob = ""
+        for h in reversed(state["history"]):
+            if h["phase"] == "improvement":
+                imp = h.get("improvements") or {}
+                improvement_blob = json.dumps(imp, indent=2, default=str)
+                break
+
+        return previous_scores, improvement_blob
+
     def _process_data_phase(self, state: SupervisorState) -> Dict[str, Any]:
         """Запускает обработку данных через data_worker"""
         logger.info("Starting data processing phase...")
@@ -159,9 +181,13 @@ class SupervisorAgent:
         logger.info(f"Starting training phase (iteration {state['iterations'] + 1}/{state['max_iterations']})...")
 
         try:
+            prev_scores, improvement_ctx = self._refinement_context_for_train(state)
             result = run_trainer(
                 session=state["session"],
-                max_attempts=self.config.pipeline.max_attempts_per_agent
+                max_attempts=self.config.pipeline.max_attempts_per_agent,
+                training_iteration=state["iterations"],
+                improvement_context=improvement_ctx,
+                previous_scores=prev_scores,
             )
 
             scores = result.get("scores", {})
@@ -302,11 +328,13 @@ class SupervisorAgent:
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
             analysis = json.loads(content)
-            decision = analysis.get("decision",
-                                    "improve" if state["iterations"] < state["max_iterations"] else "submit")
+            decision = analysis.get(
+                "decision",
+                "improve" if state["iterations"] < state["max_iterations"] - 1 else "submit",
+            )
         except Exception as e:
             logger.warning(f"Failed to parse analysis response: {e}")
-            decision = "improve" if state["iterations"] < state["max_iterations"] else "submit"
+            decision = "improve" if state["iterations"] < state["max_iterations"] - 1 else "submit"
 
         state["history"].append({
             "phase": "analysis",
@@ -359,13 +387,14 @@ class SupervisorAgent:
         Suggest improvements focusing on:
         1. Feature engineering (handle categorical variables better)
         2. Hyperparameter tuning
-        3. Different model architectures (XGBoost, LightGBM)
+        3. Different model architectures — prefer sklearn first: HistGradientBoostingRegressor/Classifier,
+           RandomForest, ExtraTrees; only suggest xgboost/lightgbm if they are acceptable dependencies
         4. Handling missing values more effectively
 
         Output JSON:
         {{
             "improvements": ["specific improvement 1", "specific improvement 2"],
-            "model_type": "random_forest|xgboost|lightgbm",
+            "model_type": "hist_gradient_boosting|random_forest|xgboost|lightgbm",
             "hyperparameters": {{"param": "value"}},
             "feature_changes": ["add feature", "remove feature"]
         }}
@@ -383,8 +412,11 @@ class SupervisorAgent:
         except Exception as e:
             logger.warning(f"Failed to parse improvements: {e}")
             improvements = {
-                "improvements": ["Try XGBoost instead of RandomForest", "Add more feature engineering"],
-                "model_type": "xgboost"
+                "improvements": [
+                    "Use HistGradientBoostingRegressor with numeric-only features after encoding",
+                    "Treat all non-numeric columns (object, string, category) before scaling",
+                ],
+                "model_type": "hist_gradient_boosting",
             }
 
         # Сохраняем план улучшений (без session объекта)
@@ -507,7 +539,8 @@ class SupervisorAgent:
         last_analysis = next((h for h in reversed(state["history"]) if h["phase"] == "analysis"), None)
         decision = last_analysis.get("decision", "submit") if last_analysis else "submit"
 
-        if decision == "improve" and state["iterations"] < state["max_iterations"]:
+        # iterations поднимается в improve_model; последний допустимый train при iterations == max_iterations - 1
+        if decision == "improve" and state["iterations"] < state["max_iterations"] - 1:
             logger.info(f"Decision: Improve model (iteration {state['iterations'] + 1})")
             return "improve"
         else:
