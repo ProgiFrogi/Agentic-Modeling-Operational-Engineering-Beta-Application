@@ -10,8 +10,12 @@ Project of multi-agent system for Kaggle, realized in course of "Agentic Systems
 - utils - утилиты для всего на свете
 - tools - утилиты для именно тулов и просто тулы
 - config - работа с конфигурацией запуска
+- rag - тут хранится rag, его создание и импользование
+- deploy - некоторые sh для vllm
 - временные папки
-  - sessions - все данные о запусках в изолированных папках
+  - sessions - только тут может работать с файлами код
+  - logs - логи
+  - benchmark - результаты оценивания
 
 # Запуск
 Запускать `main.py`. Параметры выполнения будут взяты из `config/config.yaml` по дефолту. \
@@ -21,3 +25,33 @@ Project of multi-agent system for Kaggle, realized in course of "Agentic Systems
 - --download-data - загружать ли с каггла информацию о соревновании или использовать локальные
 - --max-iterations - максимальное количество итераций улучшения в агентной системе
 - --no-safe-mode - ослабить ли ограничения на среду выполнения кода
+Обязательные есть некоторые env параметры, а именно
+- KAGGLE_API_TOKEN - self-explanatory
+- MODELS_LOCATION - путь до hugging face кеша
+- STORAGE_LOCATION - пусть до chromadb rag
+- RERANKER_MODEL - self-explanatory
+- EMBEDDING_MODEL - self-explanatory
+
+# Запуск vllm
+Для создания rag использовался vllm (тогда нужно code_describer_start.sh запускать). Можно также и для основного запуска использовать. Нужно
+1. Fill in .env file
+2. Configure docker nvidia support
+2. https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#with-apt-ubuntu-debian
+3. https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuring-docker (с docker desktop не получится)
+4. set -a; source .env; set +a; chmod u+x ./deploy/vllm/coder_start.sh; . ./deploy/vllm/coder_start.sh;
+
+# Рассуждения про архитектуру
+## Безопасность
+В кодере есть проверки на генерируемый код и на то, что приходит моделям. Черные списки, которые могут конфигурироваться через `config.yaml`. Ничего более особо не нужно, потому что с промптами пользователей мы не работаем и в интернет не ходим. Ходим только в rag, но там верим что данные очищены \
+В rag при построении код очищается от всех комментариев. Markdown проверяется `protectai/deberta-v3-base-prompt-injection-v2`. Код моделью не проверяется, потому что она не может адекватно работать с ним (очень много false positive). В rag markdown еще очищается от эмодзи и не английского текста - такое может использоваться для injection неявно. \
+## Архитектура агентной системы
+Подробное описание в _build_graph агента SupervisorAgent \
+analyze_competition (анализ того, что вообще надо сделать - нужно чтобы была начальная информация для агентов) -> \
+process_data (повторные вызовы data_worker пока данные не примут адекватный вид для работы) retry or -> \
+train_model -> validate_model -> analyze_results (последовательность создание модели, валидации результатов, анализа результатов, решение нужно повторять или уже все) -> improve_model or make_submission \
+improve_model (предлагает что сделать) -> train_model (петля) \
+make_submission (выход)
+
+Есть начальная подготовка данных, которую повторять не надо. Потом цикл написания кода, проверки, предложения улучшения.
+## RAG
+Rag на основе ноутбуков с kaggle. Выборочно взяты поисковые слова и количества. Легкая модель конвертирует код в описание для сохранения (markdown сохраняется с embedding'ом самого себя). Для разбивки на чанки используются PythonCodeTextSplitter и MarkdownTextSplitter, чтобы не обрывать связные участки по возможности. Реранкер используется при извлечении записей (cross encoder метод). Поддерживает поиск по типу контента и фиксированным тегам.

@@ -32,6 +32,8 @@ pipeline:
   max_attempts_per_agent: 3
   execution_timeout: 60  # seconds
   safe_mode: true
+  rag_retrievals: 3
+  rag_char_limit: 3000
 
   # Пути
   data_dir: "./data"

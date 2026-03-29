@@ -1,9 +1,4 @@
-import os
-
-from openai import OpenAI
-
 from rag.pipeline import KaggleRAGPipeline
-from rag.rag_types import ChunkType, ContentType
 
 
 # Example usage

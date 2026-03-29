@@ -75,6 +75,8 @@ class PipelineConfig:
     max_iterations: int = 3
     max_attempts_per_agent: int = 3
     execution_timeout: int = 60
+    rag_retrievals: int = 3
+    rag_char_limit: int = 3000
     safe_mode: bool = True
     data_dir: str = "./data"
     sessions_dir: str = "./sessions"
