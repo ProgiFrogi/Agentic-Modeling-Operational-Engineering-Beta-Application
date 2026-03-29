@@ -1,201 +1,389 @@
-# agents/data_worker.py (улучшенный - реальная обработка данных)
-"""Data Worker agent for data analysis and preprocessing"""
+""" Analyze data and give instructions to data_worker """
+
+
+import os
+from typing import Dict, Any, TypedDict, List, Optional
 
 import json
 import pandas as pd
-from typing import Dict, Any, TypedDict, List
-from pathlib import Path
+from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
-
-from utils import logger, SessionManager
-from config import get_config
-from agents.prompts import DATA_ANALYSIS_PROMPT
+from utils import data_utils, logger
+from dotenv import load_dotenv
+from agents.prompts import data_analytic_prompt
+from utils.session_manager import  SessionManager
 from agents.coder import run_coder
 
+load_dotenv()
 
-class DataWorkerState(TypedDict):
-    session: SessionManager
+class DataWorkState(TypedDict):
     task: str
+    session: SessionManager
+    data_dir: Optional[str]
+    path_to_comp_desc: str
+    name_of_file: str
+
+    current_plan: str
+    analytic_attempts: int
+    analytic_max_attempts: int
     satisfy_rate: float
-    history: List[Dict[str, Any]]
-    attempts: int
-    max_attempts: int
+
+    worker_attempts: int
+    worker_max_attempts: int
+
+    previous_results: List[Dict[str, Any]]
     done: bool
-    last_output: str
 
 
-class DataWorkerAgent:
-    """Агент для анализа и предобработки данных"""
+llm = ChatOllama(
+    model="qwen2.5-coder:14b-instruct-q4_K_M",
+    temperature=0,
+)
 
-    def __init__(self):
-        self.config = get_config()
-        self.llm = self.config.get_llm()
+def extract_json_from_response(response: str) -> Dict[str, Any]:
+    """Extract JSON from LLM response, removing markdown formatting"""
+    clean_response = response.strip()
 
-    def _analyze_data_quality(self, session_dir: Path) -> Dict[str, Any]:
-        """Анализирует качество данных и возвращает метрики"""
-        try:
-            train_path = session_dir / "train.csv"
-            if not train_path.exists():
-                return {"quality_score": 0.0, "issues": ["No train data"]}
+    # Remove markdown code blocks if present
+    if clean_response.startswith("```json"):
+        clean_response = clean_response.split("```json")[1]
+    elif clean_response.startswith("```"):
+        clean_response = clean_response.split("```")[1]
 
-            df = pd.read_csv(train_path)
+    if clean_response.endswith("```"):
+        clean_response = clean_response.rsplit("```", 1)[0]
 
-            # Рассчитываем метрики качества
-            missing_ratio = df.isnull().sum().sum() / (df.shape[0] * df.shape[1])
-            duplicate_ratio = df.duplicated().sum() / df.shape[0] if df.shape[0] > 0 else 0
+    clean_response = clean_response.strip()
 
-            # Проверяем наличие целевой переменной
-            target_col = self.config.competition.target_column
-            has_target = target_col in df.columns
-
-            # Оценка качества (0-1)
-            quality_score = 1.0
-            issues = []
-
-            if missing_ratio > 0.3:
-                quality_score -= 0.3
-                issues.append(f"High missing values ratio: {missing_ratio:.2%}")
-            elif missing_ratio > 0.1:
-                quality_score -= 0.1
-                issues.append(f"Moderate missing values: {missing_ratio:.2%}")
-
-            if duplicate_ratio > 0.1:
-                quality_score -= 0.2
-                issues.append(f"High duplicate ratio: {duplicate_ratio:.2%}")
-
-            if not has_target:
-                quality_score = 0
-                issues.append(f"Target column '{target_col}' not found")
-
-            return {
-                "quality_score": max(0, quality_score),
-                "issues": issues,
-                "missing_ratio": missing_ratio,
-                "duplicate_ratio": duplicate_ratio,
-                "has_target": has_target,
-                "shape": df.shape
-            }
-
-        except Exception as e:
-            logger.error(f"Data quality analysis failed: {e}")
-            return {"quality_score": 0.0, "issues": [str(e)]}
-
-    def _generate_preprocessing_plan(self, state: DataWorkerState, quality_report: Dict[str, Any]) -> str:
-        """Генерирует план предобработки данных"""
-
-        session_dir = state["session"].session_dir
-        train_path = session_dir / "train.csv"
-
-        if not train_path.exists():
-            return "Load the dataset and perform initial exploration"
-
-        df = pd.read_csv(train_path)
-
-        # Анализируем колонки
-        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-        categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-        datetime_cols = [c for c in df.columns if 'dt' in c.lower() or 'date' in c.lower()]
-
-        # Формируем специфический план
-        plan_parts = []
-
-        if quality_report.get("missing_ratio", 0) > 0:
-            plan_parts.append(f"Handle missing values: {quality_report['missing_ratio']:.2%} missing")
-
-        if len(datetime_cols) > 0:
-            plan_parts.append(f"Convert datetime columns: {datetime_cols}")
-
-        if len(categorical_cols) > 0:
-            high_cardinality = [c for c in categorical_cols if df[c].nunique() > 50]
-            low_cardinality = [c for c in categorical_cols if df[c].nunique() <= 50]
-            if high_cardinality:
-                plan_parts.append(f"Use frequency encoding for high-cardinality columns: {high_cardinality}")
-            if low_cardinality:
-                plan_parts.append(f"Use label encoding for low-cardinality columns: {low_cardinality}")
-
-        if len(numeric_cols) > 0:
-            plan_parts.append(f"Scale numerical features: {numeric_cols[:5]}...")
-
-        plan = "Perform the following data preprocessing:\n" + "\n".join(
-            f"{i + 1}. {p}" for i, p in enumerate(plan_parts))
-        plan += "\n\nAfter preprocessing, save the cleaned data back to train.csv and test.csv"
-
-        return plan
-
-    def run(self, session: SessionManager, max_attempts: int = 3) -> Dict[str, Any]:
-        """Запускает агента обработки данных"""
-
-        # Анализируем качество данных
-        quality_report = self._analyze_data_quality(session.session_dir)
-
-        # Если данные уже хорошего качества, пропускаем обработку
-        if quality_report["quality_score"] > 0.8 and quality_report.get("missing_ratio", 1) < 0.05:
-            logger.info(f"Data quality is good ({quality_report['quality_score']:.2f}), skipping preprocessing")
-            return {
-                "satisfy_rate": quality_report["quality_score"],
-                "done": True,
-                "quality_report": quality_report
-            }
-
-        # Генерируем план обработки
-        preprocessing_plan = self._generate_preprocessing_plan(
-            state={"session": session, "history": [], "attempts": 0},
-            quality_report=quality_report
-        )
-
-        logger.info(f"Preprocessing plan: {preprocessing_plan[:200]}...")
-
-        # Формируем задание для кодера
-        coding_task = f"""
-        Perform data preprocessing on the dataset.
-
-        Session directory: {session.session_dir}
-
-        Preprocessing requirements:
-        {preprocessing_plan}
-
-        Specific instructions:
-        1. Load train.csv and test.csv
-        2. Handle missing values appropriately:
-           - Numerical: fill with median
-           - Categorical: fill with mode or 'Unknown'
-        3. Encode categorical variables:
-           - Low cardinality (<=50): LabelEncoder
-           - High cardinality (>50): frequency encoding
-        4. Scale numerical features using StandardScaler
-        5. Handle datetime columns if present (extract year, month, day, dayofweek)
-        6. Save processed data back to train.csv and test.csv
-        7. Print before/after shapes and memory usage
-
-        The target column is '{self.config.competition.target_column}'.
-        Make sure to preserve it in train data.
-        """
-
-        result = run_coder(
-            task=coding_task,
-            max_attempts=max_attempts,
-            data_dir=str(session.session_dir),
-            extra_rules="Focus on data preprocessing only, don't train models."
-        )
-
-        # Повторно анализируем качество после обработки
-        new_quality_report = self._analyze_data_quality(session.session_dir)
-
-        success = result.get("execution_error") is None
-        satisfy_rate = new_quality_report["quality_score"] if success else 0.5
-
-        logger.info(f"Data processing completed. New quality score: {satisfy_rate:.2f}")
-
-        return {
-            "satisfy_rate": satisfy_rate,
-            "done": success and satisfy_rate > 0.7,
-            "quality_report": new_quality_report,
-            "preprocessing_plan": preprocessing_plan,
-            "execution_output": result.get("execution_output", "")
-        }
+    try:
+        return json.loads(clean_response)
+    except json.JSONDecodeError:
+        # Try to find JSON object using regex
+        import re
+        json_match = re.search(r'\{.*\}', clean_response, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
+        return {}
 
 
-def run_data_worker(session: SessionManager, max_attempts: int = 3) -> Dict[str, Any]:
-    agent = DataWorkerAgent()
-    return agent.run(session, max_attempts)
+def get_dataset_info(session: SessionManager, name: str = "train") -> Dict:
+    """Получает информацию о датасете из сессионной папки"""
+    file_path = session.session_dir / f"{name}.csv"
+
+    if not file_path.exists():
+        return {"exists": False}
+
+    df = pd.read_csv(file_path)
+    return {
+        "exists": True,
+        "shape": df.shape,
+        "columns": list(df.columns),
+        "dtypes": df.dtypes.to_dict(),
+        "missing": df.isnull().sum().to_dict(),
+        "head": df.head(5).to_dict()
+    }
+
+
+def analytic_initial_step(state: DataWorkState) -> Dict[str, Any]:
+    # Получаем информацию о текущих файлах
+    train_info = get_dataset_info(state["session"], "train")
+    test_info = get_dataset_info(state["session"], "test")
+
+    # Читаем описание
+    with open(state["path_to_comp_desc"], 'r', encoding='utf-8') as f:
+        description = f.read()
+
+    request_data = {
+        "description": description,
+        "train_info": train_info,
+        "test_info": test_info,
+        "history": "It's your first try"
+    }
+
+    prompt = f"""
+    You are a professional data analyst working with files in the session directory.
+
+    Current session directory: {state['session'].session_dir}
+    Files available: {state['session'].list_files()}
+
+    Dataset info:
+    Train data: {train_info['shape'][0]} rows, {train_info['shape'][1]} columns
+    Test data: {test_info['shape'][0]} rows, {test_info['shape'][1]} columns
+
+    Dataset description from author: 
+    {description}
+
+    History:
+    {request_data['history']}
+
+    IMPORTANT:
+    - All your operations should work with files in the session directory
+    - You can modify train.csv and test.csv directly
+    - The files will be automatically saved after each operation
+    - Use the session directory for all file operations
+    - The data worker will execute code in the session directory
+
+    Rate your confidence (0-1) that the data is ready for model training.
+    If rate > 0.9, we proceed to model training.
+
+    Give response in json with fields:
+    - data_planner_request: str with commands for data_worker
+    - satisfy_rate: float
+    """
+
+    logger.info(f"AnalyticREQUEST: {prompt}")
+    response = llm.invoke([HumanMessage(content=prompt)]).content
+
+    response_json = extract_json_from_response(response)
+    data_planner_request = response_json.get("data_planner_request", "Process the data")
+    satisfy_rate = response_json.get("satisfy_rate", 0.8)
+
+    logger.info(f"AnalyticRESPONSE: {response}")
+
+    return {
+        "current_plan": data_planner_request,
+        "satisfy_rate": satisfy_rate,
+        "analytic_attempts": 1,
+        "previous_results": [{
+            "analytic_request": state["task"],
+            "analytic_response": response,
+            "worker_response": ""
+        }],
+    }
+
+
+def analytic_next_step(state: DataWorkState) -> Dict[str, Any]:
+    if state["analytic_attempts"] > state["analytic_max_attempts"]:
+        return {"done": True}
+
+    # Получаем актуальную информацию о файлах
+    train_info = get_dataset_info(state["session"], "train")
+    test_info = get_dataset_info(state["session"], "test")
+
+    # Читаем описание
+    with open(state["path_to_comp_desc"], 'r', encoding='utf-8') as f:
+        description = f.read()
+
+    # Формируем историю с ошибками и успехами
+    history = ""
+    errors = []
+    successes = []
+
+    for i, attempt in enumerate(state["previous_results"]):
+        history += f"Step {i + 1}:\n"
+        history += "  Request: " + attempt.get("analytic_request", "")[:200] + "\n"
+
+        worker_response = attempt.get("worker_response", "")
+        if "Error:" in worker_response:
+            history += "  Status: FAILED\n"
+            history += "  Error: " + worker_response[:200] + "\n"
+            errors.append(worker_response[:200])
+        else:
+            history += "  Status: SUCCESS\n"
+            history += "  Output: " + worker_response[:200] + "\n"
+            successes.append(worker_response[:200])
+
+    # Проверяем, есть ли успешные выполнения
+    has_successful_run = len(successes) > 0
+
+    # Формируем секцию с рекомендациями
+    recommendations = ""
+    if has_successful_run:
+        recommendations = """
+    DATA HAS BEEN SUCCESSFULLY PROCESSED!
+
+    Based on the successful execution, the data now has:
+    - Consistent data types between train and test
+    - Missing values handled
+    - Categorical variables encoded
+    - Numerical features scaled
+
+    If you are confident the data is ready for model training, set satisfy_rate > 0.9.
+    """
+    elif errors:
+        recommendations = f"""
+    PREVIOUS ERRORS (NEED TO FIX):
+    {chr(10).join([f"  - {e}" for e in errors[-2:]])}
+
+    The code failed. Your next instructions should specifically address these errors.
+    """
+
+    prompt = f"""
+You are a professional data analyst working with files in the session directory.
+
+Current session directory: {state['session'].session_dir}
+Files available: {state['session'].list_files()}
+
+Current dataset state:
+Train data: {train_info['shape'][0]} rows, {train_info['shape'][1]} columns
+Test data: {test_info['shape'][0]} rows, {test_info['shape'][1]} columns
+
+Dataset description from author: 
+{description}
+
+HISTORY OF PREVIOUS ATTEMPTS:
+{history}
+
+{recommendations}
+
+TASK: {state['task']}
+
+CRITICAL INSTRUCTIONS:
+1. If data has been successfully processed (no errors in last attempt), you should set satisfy_rate > 0.9 to proceed to model training
+2. If there were errors, provide SPECIFIC instructions to fix them
+3. DO NOT repeat the same instructions if they already succeeded
+
+Rate your confidence (0-1) that the data is ready for model training.
+If rate > 0.9, we proceed to model training.
+
+Give response in json with fields:
+- data_planner_request: str with commands for data_worker (empty if rate > 0.9)
+- satisfy_rate: float
+"""
+
+    response = llm.invoke([HumanMessage(content=prompt)]).content
+
+    response_json = extract_json_from_response(response)
+    data_planner_request = response_json.get("data_planner_request", "")
+    satisfy_rate = response_json.get("satisfy_rate", 0.0)
+
+    done = satisfy_rate >= 0.9
+    print(f"Done: {done}")
+    logger.info(f"AnalyticREQUEST: {prompt[:500]}...")
+    logger.info(f"AnalyticRESPONSE: {response}")
+    logger.info(f"Parsed satisfy_rate: {satisfy_rate}, done: {done}")
+
+    # Обновляем историю
+    prev_results = state.get("previous_results", [])
+    current_plan = state.get("current_plan", "")
+
+    prev_results.append({
+        "analytic_request": current_plan,
+        "analytic_response": response,
+        "worker_response": "",
+        "analytic_attempt": state["analytic_attempts"]
+    })
+
+    return {
+        "current_plan": data_planner_request if not done else "",
+        "analytic_attempts": state["analytic_attempts"] + 1,
+        "previous_results": prev_results,
+        "done": done,
+        "satisfy_rate": satisfy_rate,
+    }
+
+
+def after_check(state: DataWorkState) -> str:
+    if state["done"]:
+        return "stop_analysis"
+    return "continue"
+
+
+def run_coder_wrapper(state: DataWorkState) -> Dict[str, Any]:
+    task = state.get("current_plan")
+    if task is None:
+        logger.warning("[Wrapper] No current_plan found, cannot run coder.")
+        return {"done": True}
+
+    max_attempts = state.get("worker_max_attempts", 3)
+
+    # Задача для кодера - работа с файлами в сессионной папке
+    enhanced_task = f"""
+    Work with files in the session directory: {state['session'].session_dir}
+
+    Available files: {state['session'].list_files()}
+
+    Task: {task}
+
+    Instructions:
+    1. Load data from the session directory files (train.csv, test.csv)
+    2. Perform required transformations
+    3. Save the processed data back to the same files (overwrite)
+    4. You can create additional files if needed (they will be saved in the session directory)
+
+    Important:
+    - All file operations should use paths relative to the session directory
+    - The session directory is: {state['session'].session_dir}
+    - You can use: pd.read_csv('train.csv') - it will work from the session directory
+    - After processing, save back using: df.to_csv('train.csv', index=False)
+
+    The system will automatically use the updated files for the next steps.
+    """
+
+    logger.info(f"[Wrapper] Running coder with task:\n{enhanced_task}")
+
+    # Запускаем кодера с указанием сессионной папки как data_dir
+    result = run_coder(
+        enhanced_task,
+        max_attempts,
+        data_dir=str(state['session'].session_dir)
+    )
+
+    if result.get("execution_output"):
+        worker_response = result["execution_output"]
+    elif result.get("execution_error"):
+        worker_response = f"Error: {result['execution_error']}"
+    else:
+        worker_response = "No output"
+
+    logger.info(f"[Wrapper] Coder finished.")
+    logger.info(f"[Wrapper] Response: {worker_response[:500]}...")  # Первые 500 символов
+
+    # Обновляем историю
+    prev_results = state.get("previous_results", [])
+    if prev_results:
+        prev_results[-1]["worker_response"] = worker_response
+
+    return {
+        "previous_results": prev_results,
+        "worker_attempts": state.get("worker_attempts", 0) + 1,
+    }
+
+
+def run_data_worker(state: DataWorkState, max_attempts: int = 3) -> Dict[str, Any]:
+
+    # Строим граф
+    graph = StateGraph(DataWorkState)
+    graph.add_node("start_analytic", analytic_initial_step)
+    graph.add_node("run_coder", run_coder_wrapper)
+    graph.add_node("continue_analytic", analytic_next_step)
+
+    graph.set_entry_point("start_analytic")
+    graph.add_edge("start_analytic", "run_coder")
+    graph.add_edge("run_coder", "continue_analytic")
+    graph.add_conditional_edges("continue_analytic", after_check, {
+        "stop_analysis": END,
+        "continue": "continue_analytic"
+    })
+
+
+    app = graph.compile()
+
+    result = app.invoke(state)
+    return result
+
+
+if __name__ == "__main__":
+    df = pd.read_csv("data/train.csv")
+    initial_state = {
+        "df": df,
+        "data_dir": "data",
+        "path_to_comp_desc": "data/competition_info.txt",
+        "name_of_file": "train.csv",
+
+        "current_plan": None,
+        "analytic_attempts": 0,
+        "analytic_max_attempts": 4,
+        "satisfy_rate": 0.0,
+
+        "worker_attempts": 0,
+        "worker_max_attempts": 3,
+
+        "previous_results": [],
+        "done": False,
+    }
+    run_data_worker(initial_state)

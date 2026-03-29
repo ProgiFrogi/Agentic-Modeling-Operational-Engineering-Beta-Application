@@ -1,9 +1,13 @@
 # Agentic-Modeling-Operational-Engineering-Beta-Application
 Project of multi-agent system for Kaggle, realized in course of "Agentic Systems" by MWS
 
-## Installation
-1. Fill in .env file
-2. Configure docker nvidia support
-2. https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#with-apt-ubuntu-debian
-3. https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuring-docker (с docker desktop не получится)
-4. set -a; source .env; set +a; chmod u+x ./deploy/vllm/coder_start.sh; . ./deploy/vllm/coder_start.sh;
+# Общая логика работы
+Каждый запуск происходит с создания сессии, в рамках запуска агенты могут работать только внутри папки сессии, что обеспечивает большую безопасность.
+Данные для сессии берутся с data/, в ней хранится датасеты с соревнования и информация о соревновании.
+
+
+# Структура:
+- session/ - папка с сессиями, к
+- agents - тут хранятся агенты:
+  - coder.py - агент-кодер, ему приходит запрос на создание кода, он его пишет, после чего код проверяется (сначала быстро с помощью проверки AST, потом с помощью выполнения), в случае, если есть ошибка в коде, происходит fallback, ошибка передается кодеру вместе с прошлой версией кода и его просят поправить его
+  - data_worker.py - агент-датааналитик. Составляет план для анализа данных, работает с оберткой 
