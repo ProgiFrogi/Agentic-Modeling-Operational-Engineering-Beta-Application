@@ -1,4 +1,3 @@
-# agents/trainer.py (исправленный - добавляем сохранение scores)
 """Trainer agent for model training and evaluation"""
 
 import os
