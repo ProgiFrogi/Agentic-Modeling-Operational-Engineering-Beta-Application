@@ -8,6 +8,7 @@ wheels/
 rag/kaggle_notebooks
 rag/kaggle_vector_store
 rag/models
+logs
 
 # Virtual environments
 .venv
