@@ -1,16 +1,21 @@
+# agents/trainer.py (исправленный - добавляем сохранение scores)
 """Trainer agent for model training and evaluation"""
 
+import os
 import json
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, TypedDict, List, Optional
 from pathlib import Path
+from langgraph.graph import StateGraph, END
+from langchain_core.messages import HumanMessage
 
 from utils import logger
 from utils.session_manager import SessionManager
 from agents.coder import run_coder
 from config import get_config
 from agents.prompts import TRAINING_CODE_PROMPT
+import joblib
 
 
 class TrainerState(TypedDict):
