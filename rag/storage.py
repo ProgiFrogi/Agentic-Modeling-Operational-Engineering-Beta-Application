@@ -19,9 +19,9 @@ class VectorStore:
         self.overload_factor = overload_factor
 
         # Initialize embedding model
-        self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL"), cache_folder=os.getenv("MODELS_HUB"))
+        self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL"), cache_folder=f"{os.getenv("MODELS_LOCATION")}/hub")
         # Initialize reranker model
-        self.reranker_model = CrossEncoder(os.getenv("RERANKER_MODEL"), cache_folder=os.getenv("MODELS_HUB"))
+        self.reranker_model = CrossEncoder(os.getenv("RERANKER_MODEL"), cache_folder=f"{os.getenv("MODELS_LOCATION")}/hub")
 
         # Initialize ChromaDB
         os.makedirs(name=os.getenv("STORAGE_LOCATION"), exist_ok=True)
@@ -177,3 +177,24 @@ class VectorStore:
             })
 
         return formatted_results
+
+
+# Глобальный экземпляр
+_storage: Optional[VectorStore] = None
+
+
+def get_storage() -> VectorStore:
+    """Возвращает глобальный экземпляр хранилища"""
+    global _storage
+    if _storage is None:
+        _storage = VectorStore()
+    return _storage
+
+def results_to_text(results: List[Dict], limit: Optional[int] = None) -> str:
+    """Конвертирует ответ VectorStore в связный текст"""
+    string_view = ""
+    for i, r in enumerate(results):
+        string_view += f"Retrieval {i + 1}\nr['content']\n"
+    if limit and len(string_view) > limit:
+        string_view = f"{string_view[:limit]}..."
+    return string_view
