@@ -1,5 +1,3 @@
-
-# require: desc_of_columns, df_info_result, first_dataset_string, desc_of_data_size, history
 DATA_ANALYSIS_PROMPT = """
 You are professional data analytic, you must analyze data from dataset, work with it and create plan for data planner.
 Data planner - its coder, that listen your commands, create code by it, and return result of output from docker.

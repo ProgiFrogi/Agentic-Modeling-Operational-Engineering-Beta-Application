@@ -1,4 +1,3 @@
-# prompts/validator_prompts.py
 VALIDATION_PROMPT = """
 You are a model validator. Evaluate the model performance:
 

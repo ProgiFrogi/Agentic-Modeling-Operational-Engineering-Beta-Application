@@ -1,4 +1,3 @@
-# utils/__init__.py (обновлённый)
 from .logger import init_logger, debug, info, warning, error, critical, get_session_info
 from .session_manager import SessionManager
 from .benchmark import Benchmark, MetricsCalculator

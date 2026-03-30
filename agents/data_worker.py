@@ -1,16 +1,11 @@
-# agents/data_worker.py (улучшенный - реальная обработка данных)
 """Data Worker agent for data analysis and preprocessing"""
 
-import json
 import pandas as pd
 from typing import Dict, Any, TypedDict, List
 from pathlib import Path
-from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage
 
 from utils import logger, SessionManager
 from config import get_config
-from agents.prompts import DATA_ANALYSIS_PROMPT
 from agents.coder import run_coder
 
 

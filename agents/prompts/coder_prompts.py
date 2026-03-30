@@ -1,7 +1,10 @@
-# prompts/coder_prompts.py
 INITIAL_CODE_PROMPT = """
 Write Python code for the following task:
 {task}
+
+REFERENCES, only for reference, optional to use
+{references}
+END OF REFERENCES
 
 Important guidelines:
 1. Use proper spacing and formatting

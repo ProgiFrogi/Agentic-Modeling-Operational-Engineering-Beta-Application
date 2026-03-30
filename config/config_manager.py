@@ -1,7 +1,7 @@
 import os
 import yaml
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -40,11 +40,11 @@ class ModelConfig:
             )
         elif self.provider == "openrouter":
             from langchain_openai import ChatOpenAI
-            api_key = self.openrouter.api_key or os.getenv("OPENROUTER_API_KEY")
+            api_key = os.getenv("OPENROUTER_API_KEY")
             return ChatOpenAI(
                 model=self.openrouter.model,
-                openai_api_key=api_key,
-                openai_api_base=self.openrouter.base_url,
+                api_key=api_key,
+                base_url=self.openrouter.base_url,
                 temperature=self.openrouter.temperature,
             )
         else:
@@ -75,6 +75,8 @@ class PipelineConfig:
     max_iterations: int = 3
     max_attempts_per_agent: int = 3
     execution_timeout: int = 60
+    rag_retrievals: int = 3
+    rag_char_limit: int = 3000
     safe_mode: bool = True
     data_dir: str = "./data"
     sessions_dir: str = "./sessions"
@@ -107,9 +109,6 @@ class ConfigManager:
 
         if config_path and Path(config_path).exists():
             self._load_from_yaml(config_path)
-
-        # Применяем переменные окружения
-        self._apply_env_overrides()
 
     def _load_from_yaml(self, path: str):
         """Загружает конфигурацию из YAML файла"""
@@ -147,23 +146,9 @@ class ConfigManager:
                 if hasattr(self.guardrails, key):
                     setattr(self.guardrails, key, value)
 
-    def _apply_env_overrides(self):
-        """Применяет переменные окружения для переопределения конфигурации"""
-        if os.getenv("LLM_PROVIDER"):
-            self.model.provider = os.getenv("LLM_PROVIDER")
-        if os.getenv("COMPETITION_NAME"):
-            self.competition.name = os.getenv("COMPETITION_NAME")
-        if os.getenv("DOWNLOAD_DATA") is not None:
-            self.competition.download_data = os.getenv("DOWNLOAD_DATA", "").lower() == "true"
-
     def get_llm(self):
         """Возвращает настроенную LLM"""
         return self.model.get_llm()
-
-    @classmethod
-    def from_file(cls, config_path: str) -> "ConfigManager":
-        """Создает конфигурацию из файла"""
-        return cls(config_path)
 
 
 # Глобальный экземпляр

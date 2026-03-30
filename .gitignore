@@ -5,8 +5,18 @@ build/
 dist/
 wheels/
 *.egg-info
-.env
+rag/kaggle_notebooks
+rag/kaggle_vector_store
+rag/models
+logs
+
 # Virtual environments
 .venv
-test
+venv
+
+# Application specifix
+.qodo
 .idea
+
+# Secrets
+.env

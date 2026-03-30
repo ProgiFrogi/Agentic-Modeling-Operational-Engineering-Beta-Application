@@ -3,16 +3,15 @@
 import json
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, TypedDict, List, Optional
+from typing import Dict, Any, TypedDict, List
 from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
 
 from utils import extract_json_from_response
-from utils import logger
 from utils.session_manager import SessionManager
-import pickle
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
 
 class ValidatorState(TypedDict):
     session: SessionManager
@@ -25,10 +24,12 @@ class ValidatorState(TypedDict):
     recommendations: List[str]
     done: bool
 
+
 llm = ChatOllama(
     model="qwen2.5-coder:14b-instruct-q4_K_M",
     temperature=0,
 )
+
 
 def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, metric: str) -> float:
     """Calculate specified metric"""
@@ -42,6 +43,7 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, metric: str) -> fl
         return r2_score(y_true, y_pred)
     else:
         return mean_squared_error(y_true, y_pred)
+
 
 def validate_model(state: ValidatorState) -> Dict[str, Any]:
     """Validate trained model"""
@@ -118,11 +120,15 @@ Output in JSON format:
 
     try:
         report_json = json.loads(response) if response.startswith('{') else extract_json_from_response(response)
-        passed = report_json.get("passed", score <= state['threshold'] if state['metric'] in ['mse', 'rmse', 'mae'] else score >= state['threshold'])
+        passed = report_json.get("passed",
+                                 score <= state['threshold'] if state['metric'] in ['mse', 'rmse', 'mae'] else score >=
+                                                                                                               state[
+                                                                                                                   'threshold'])
         recommendations = report_json.get("recommendations", [])
         analysis = report_json.get("analysis", "")
     except:
-        passed = score <= state['threshold'] if state['metric'] in ['mse', 'rmse', 'mae'] else score >= state['threshold']
+        passed = score <= state['threshold'] if state['metric'] in ['mse', 'rmse', 'mae'] else score >= state[
+            'threshold']
         recommendations = []
         analysis = f"Score: {score}"
 
@@ -142,6 +148,7 @@ Analysis: {analysis}
         "recommendations": recommendations,
         "done": True
     }
+
 
 def run_validator(session: SessionManager,
                   target_column: str = "target",
@@ -169,7 +176,7 @@ def run_validator(session: SessionManager,
     app = graph.compile()
     result = app.invoke(initial_state)
 
-    print("="*50)
+    print("=" * 50)
     print("Validation Results:")
     print(result.get("validation_report"))
     print(f"Recommendations: {result.get('recommendations')}")

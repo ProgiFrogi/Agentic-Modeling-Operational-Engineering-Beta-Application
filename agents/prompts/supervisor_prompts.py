@@ -1,4 +1,3 @@
-# prompts/supervisor_prompts.py
 SUPERVISOR_PLAN_PROMPT = """
 You are the Supervisor of a multi-agent Kaggle competition system.
 

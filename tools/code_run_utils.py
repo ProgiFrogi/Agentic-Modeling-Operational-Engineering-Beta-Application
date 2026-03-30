@@ -16,6 +16,7 @@ def extract_code(text: str) -> str:
         text = text.strip()
     return text
 
+
 def check_syntax(state: TypedDict) -> Dict[str, Any]:
     code = state.get("current_code")
     if not code:
