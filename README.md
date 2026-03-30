@@ -1,5 +1,5 @@
 # Agentic-Modeling-Operational-Engineering-Beta-Application
-Project of multi-agent system for Kaggle, realized in course of "Agentic Systems" by MWS
+Kaggle Multi-Agent System Implemented during MWS "Agentic Systems" Course
 
 # Общая логика работы
 Каждый запуск происходит с создания сессии, в рамках запуска агенты могут работать только внутри папки сессии, что обеспечивает большую безопасность.
@@ -35,10 +35,10 @@ ollama pull [ваша модель]
 - --download-data - загружать ли с каггла информацию о соревновании или использовать локальные
 - --max-iterations - максимальное количество итераций улучшения в агентной системе
 - --no-safe-mode - ослабить ли ограничения на среду выполнения кода
-Обязательные есть некоторые env параметры, а именно
+Обязательно есть некоторые env параметры, а именно
 - KAGGLE_API_TOKEN - self-explanatory
 - MODELS_LOCATION - путь до hugging face кеша
-- STORAGE_LOCATION - пусть до chromadb rag
+- STORAGE_LOCATION - путь до chromadb rag
 - RERANKER_MODEL - self-explanatory
 - EMBEDDING_MODEL - self-explanatory
 
