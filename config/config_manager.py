@@ -40,11 +40,11 @@ class ModelConfig:
             )
         elif self.provider == "openrouter":
             from langchain_openai import ChatOpenAI
-            api_key = self.openrouter.api_key or os.getenv("OPENROUTER_API_KEY")
+            api_key = os.getenv("OPENROUTER_API_KEY")
             return ChatOpenAI(
                 model=self.openrouter.model,
-                openai_api_key=api_key,
-                openai_api_base=self.openrouter.base_url,
+                api_key=api_key,
+                base_url=self.openrouter.base_url,
                 temperature=self.openrouter.temperature,
             )
         else:
