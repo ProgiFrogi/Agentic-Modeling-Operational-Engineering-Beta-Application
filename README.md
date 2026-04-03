@@ -3,8 +3,11 @@ Kaggle Multi-Agent System Implemented during MWS "Agentic Systems" Course
 
 # Команда
 Алексеенко Артем
+
 Смирнов Марк
+
 Тимофей Белов
+
 Дмитрий Достовалов
 
 # Общая логика работы
